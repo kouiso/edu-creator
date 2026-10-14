@@ -1,0 +1,61 @@
+# dev-config.yaml - 開発環境用設定
+# 目的: 高速・低コストでのテスト、プロンプト改善実験
+
+# 安全設定（より緩く、失敗を許容）
+safety:
+  max_iterations: 2  # 本番より少なく（高速化）
+  max_retries: 2
+  max_rpm: 20  # 開発環境では高速実行を優先
+  timeout_seconds: 900  # 15分（半分）
+  cost_confirmation_threshold_usd: 0.5  # より低い閾値
+
+# LLM設定（安価なモデル優先）
+llm:
+  commander_model: "gemini-2.0-flash"  # 本番より安価
+  worker_model: "gemini-2.0-flash"
+  commander_temperature: 0.3  # やや高め（多様性）
+  worker_temperature: 0.5
+  
+  # エージェント個別設定（全て安価モデル）
+  agent_models:
+    # PM層も開発環境では Flash を使用
+    product_owner:
+      model: "gemini-2.0-flash"
+      temperature: 0.3
+    content_pm:
+      model: "gemini-2.0-flash"
+      temperature: 0.3
+    quality_pm:
+      model: "gemini-2.0-flash"
+      temperature: 0.3
+    beginner_advocate:
+      model: "gemini-2.0-flash"
+      temperature: 0.3
+    
+    # Worker層
+    scout:
+      model: "gemini-2.0-flash"
+      temperature: 0.5
+    scribe:
+      model: "gemini-2.0-flash"
+      temperature: 0.5
+    validator:
+      model: "gemini-2.0-flash"
+      temperature: 0.4
+
+# 品質チェック（緩い基準）
+quality:
+  min_word_count: 3000  # 本番より少ない
+  min_code_blocks: 3
+  min_tables: 2
+  max_consecutive_code_lines: 25  # やや緩い
+  
+  # 開発環境では一部チェックをスキップ
+  skip_llm_judge: true  # GPT-4o評価をスキップ（コスト削減）
+  skip_mechanical_check: false  # 機械的チェックは実行
+
+# デバッグ設定
+debug:
+  verbose_logging: true
+  save_intermediate_outputs: true
+  print_token_usage: true

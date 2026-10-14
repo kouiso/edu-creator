@@ -1,0 +1,128 @@
+# edu-config.yaml for kouiso/task-app
+# This is an example configuration for generating tutorials from task-app
+
+# Safety settings
+safety:
+  max_iterations: 3
+  max_retries: 3
+  max_rpm: 10
+  timeout_seconds: 1800
+  cost_confirmation_threshold_usd: 1.0
+
+# Directory exclusions
+exclusions:
+  directories:
+    - node_modules
+    - .next
+    - dist
+    - build
+    - coverage
+    - .git
+    - .vercel
+    - playwright-report
+    - test-results
+    - .idea
+    - __pycache__
+    - .pnp
+    - out
+    - edu-generator
+  patterns:
+    - "*.log"
+    - "*.env*"
+    - "*.db"
+    - "*.db-*"
+    - "*.local"
+    - "*.pem"
+    - "*.py"
+
+# LLM settings
+llm:
+  commander_model: "gpt-4.1"
+  worker_model: "gemini-1.5-flash"
+  commander_temperature: 0.2
+  worker_temperature: 0.4
+
+# Paths
+paths:
+  src_dir: "src"
+  output_dir: "material/30days-curriculum"
+
+# Custom metaphors
+teaching:
+  metaphors:
+    Variable: "名前のついたお弁当箱"
+    Function: "魔法のレンジ（材料を入れると料理が出る）"
+    Array: "学校のロッカー（番号で管理）"
+    Object: "プロフィールカード"
+    Class: "ロボットの設計図"
+    Promise: "ピザの引換券（後で届く）"
+    API: "レストランの注文システム"
+    Database: "超巨大な電話帳"
+    Component: "レゴブロック"
+    Props: "レゴの接続部分"
+    State: "ゲームのセーブデータ"
+    Hook: "便利な道具箱"
+
+# 30-day curriculum chapters
+chapters:
+  - id: "day01"
+    title: "環境構築の第一歩"
+    subtitle: "〜プログラミングの「キッチン」を準備しよう〜"
+    topics: ["Node.js", "npm", "VS Code", "ターミナル基礎"]
+    target_dirs: ["src/app/", "package.json", "tsconfig.json"]
+
+  - id: "day02"
+    title: "TypeScriptの基礎"
+    subtitle: "〜お弁当箱に名前をつけよう〜"
+    topics: ["変数", "型", "const/let", "基本的な型"]
+    target_dirs: ["src/lib/", "src/types/"]
+
+  - id: "day03"
+    title: "Reactコンポーネント入門"
+    subtitle: "〜レゴブロックでページを組み立てよう〜"
+    topics: ["コンポーネント", "JSX", "props", "children"]
+    target_dirs: ["src/components/", "src/app/"]
+
+  - id: "day04"
+    title: "Reactの状態管理"
+    subtitle: "〜ゲームのセーブデータを作ろう〜"
+    topics: ["useState", "state", "イベントハンドラ"]
+    target_dirs: ["src/components/", "src/hooks/"]
+
+  - id: "day05"
+    title: "Hooksの世界"
+    subtitle: "〜便利な道具箱を開けてみよう〜"
+    topics: ["useEffect", "useCallback", "useMemo", "カスタムHooks"]
+    target_dirs: ["src/hooks/", "src/components/"]
+
+  - id: "day06"
+    title: "データベース入門"
+    subtitle: "〜超巨大な電話帳を作ろう〜"
+    topics: ["Prisma", "スキーマ", "モデル", "リレーション"]
+    target_dirs: ["prisma/", "src/lib/prisma.ts"]
+
+  - id: "day07"
+    title: "API設計の基礎"
+    subtitle: "〜レストランの注文システムを作ろう〜"
+    topics: ["tRPC", "ルーター", "プロシージャ"]
+    target_dirs: ["src/server/", "src/trpc/"]
+
+  - id: "day08"
+    title: "認証システム"
+    subtitle: "〜アプリに鍵をかけよう〜"
+    topics: ["NextAuth", "セッション", "ログイン"]
+    target_dirs: ["src/lib/session.ts", "src/app/login/"]
+
+  - id: "day09"
+    title: "フォームとバリデーション"
+    subtitle: "〜入力チェックの門番を作ろう〜"
+    topics: ["フォーム", "バリデーション", "エラーハンドリング"]
+    target_dirs: ["src/components/", "src/app/register/"]
+
+  - id: "day10"
+    title: "スタイリング入門"
+    subtitle: "〜アプリにおしゃれな服を着せよう〜"
+    topics: ["Material UI", "テーマ", "レスポンシブ"]
+    target_dirs: ["src/styles/", "src/lib/theme.ts", "src/app/globals.css"]
+
+  # Days 11-30 can be added as you expand the curriculum

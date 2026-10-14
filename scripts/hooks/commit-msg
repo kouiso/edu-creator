@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+LIST="${EDU_GUARD_PATTERNS_FILE:-$(git rev-parse --git-common-dir)/info/forbidden-patterns}"
+PAT="$(grep -vE '^\s*(#|$)' "$LIST" | paste -sd'|' -)"
+if grep -qiE -- "$PAT" "$1"; then echo "✖ commitメッセージに禁止語があります" >&2; exit 1; fi

@@ -1,0 +1,61 @@
+# prod-config.yaml - 本番環境用設定
+# 目的: 最高品質の教材生成、完全な検証
+
+# 安全設定（厳格）
+safety:
+  max_iterations: 3
+  max_retries: 3
+  max_rpm: 10  # レート制限を守る
+  timeout_seconds: 1800  # 30分
+  cost_confirmation_threshold_usd: 1.0
+
+# LLM設定（高品質モデル優先）
+llm:
+  commander_model: "gpt-5.2"
+  worker_model: "gemini-2.0-flash"
+  commander_temperature: 0.2  # 一貫性重視
+  worker_temperature: 0.4
+  
+  # エージェント個別設定（PM層は高機能、Worker層は安価）
+  agent_models:
+    # PM層（レビューAI）- 高機能モデル
+    product_owner:
+      model: "gpt-5.2"
+      temperature: 0.2
+    content_pm:
+      model: "gpt-5.2"
+      temperature: 0.2
+    quality_pm:
+      model: "gemini-3.0-pro"
+      temperature: 0.3
+    beginner_advocate:
+      model: "gemini-3.0-pro"
+      temperature: 0.3
+    
+    # Worker層（作業AI）- 安価モデル
+    scout:
+      model: "gemini-2.0-flash"
+      temperature: 0.4
+    scribe:
+      model: "gemini-2.0-flash"
+      temperature: 0.4
+    validator:
+      model: "gemini-2.0-flash"
+      temperature: 0.3
+
+# 品質チェック（厳格な基準）
+quality:
+  min_word_count: 4000
+  min_code_blocks: 5
+  min_tables: 3
+  max_consecutive_code_lines: 20
+  
+  # 本番環境では全てのチェックを実行
+  skip_llm_judge: false
+  skip_mechanical_check: false
+
+# デバッグ設定
+debug:
+  verbose_logging: false
+  save_intermediate_outputs: true
+  print_token_usage: true

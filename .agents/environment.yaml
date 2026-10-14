@@ -1,0 +1,4 @@
+setup:
+  install: "# See project documentation"
+  test: "# See project documentation"
+  lint: "# See project documentation"

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# push される全commitを走査（新規ブランチはリモート未到達の全commit、root含む）
+set -euo pipefail
+G="$(git rev-parse --show-toplevel)/scripts/guard/check-forbidden.sh"
+Z=0000000000000000000000000000000000000000
+while read -r lref lsha rref rsha; do
+  [ "$lsha" = "$Z" ] && continue
+  if [ "$rsha" = "$Z" ] || ! git cat-file -e "$rsha" 2>/dev/null; then "$G" commits "$lsha"
+  else "$G" range "$rsha" "$lsha"; fi
+done

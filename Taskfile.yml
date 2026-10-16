@@ -1,0 +1,15 @@
+version: '3'
+
+tasks:
+  ci:fast:
+    desc: 依存準備済みの環境で既存の重大エラー検査を実行
+    cmds:
+      - bash scripts/ci.sh fast
+  ci:
+    desc: 非公開の禁止語とgitleaksを含むCI検査を実行
+    cmds:
+      - bash scripts/ci.sh full
+  ci:contract:
+    desc: 共通入口の検査集合と失敗伝播を確認
+    cmds:
+      - bash scripts/test-ci-contract.sh

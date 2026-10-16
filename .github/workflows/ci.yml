@@ -66,9 +66,9 @@ jobs:
       # 強制する floor を敷き、リポジトリ全体で緑を維持しつつ本当に危険な退行を防ぐ。
       # ルールの拡張は既存負債を解消してから段階的に行う想定。
       - name: Ruff critical-correctness floor
-        run: uv run ruff check . --select E9,F6,F7,F63,W6,PLE,T10,B006
+        run: bash scripts/ci.sh lint
 
       # test_quality_checker.py はソース（TutorialQualityChecker）と乖離した既存の壊れたテストで
       # 5 件が恒常的に失敗する（本 PR の対象外）。当該モジュールのみ除外し、残る全テストを強制する。
       - name: Pytest
-        run: uv run pytest --ignore=tests/test_quality_checker.py
+        run: bash scripts/ci.sh test

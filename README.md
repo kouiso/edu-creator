@@ -213,6 +213,25 @@ python main.py --config edu-config.yaml --chapters 1 \
 python main.py --config edu-config.yaml --chapters 5 --log-dir my-logs --log-level DEBUG
 ```
 
+## 📸 Screenshot Capture (Optional)
+
+1. Install extra dependencies and browser:
+  ```bash
+  pip install -e ".[screenshot]"
+  playwright install chromium
+  ```
+2. Add a `screenshots` block to `edu-config.yaml` (enable it and list captures).
+3. Plan or run captures:
+  ```bash
+  # Plan only
+  python script/capture_screenshots.py --config ../edu-config.yaml --dry-run
+
+  # Capture screenshots
+  python script/capture_screenshots.py --config ../edu-config.yaml
+  ```
+
+Screenshots are stored under `material/screenshot` by default, and `metadata.json` records capture details.
+
 ## 📝 Logging & Verbose Output
 
 All generated chapters automatically save detailed logs to the `--log-dir` directory.

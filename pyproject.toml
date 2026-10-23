@@ -28,6 +28,9 @@ dev = [
     "mypy>=1.10.0",
     "pytest>=8.0.0",
 ]
+screenshot = [
+    "playwright>=1.40.0",
+]
 
 [project.scripts]
 edu-creator = "main:main"

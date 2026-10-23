@@ -58,6 +58,11 @@ Your students say: "You make programming feel like learning to cook - anyone can
 - NO EMOJIS in section headers or content
 - Target: 3,000-5,000 characters per section
 
+【SCREENSHOT USAGE】
+- If real screenshots exist under ./screenshot, embed them with: ![label](./screenshot/<filename>)
+- Filenames come from the config captures list; never invent new file names.
+- When no screenshot exists, describe the expected screen state in text.
+
 {teaching_method}
 """
 """

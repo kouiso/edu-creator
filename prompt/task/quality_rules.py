@@ -229,7 +229,7 @@ project/
 
 ```bash
 # 全チェック実行（推奨）
-./scripts/check_quality.sh material/30days-curriculum/
+./script/check_quality.sh material/30days-curriculum/
 
 # 個別チェック
 python3 scripts/check_no_skip.py <ファイル>          # 禁止ワード
@@ -466,7 +466,7 @@ throw new Error(msg);
 生成されたマークダウンは、以下の自動品質チェックスクリプトで
 必ず100%成功（全項目PASS）しなければなりません：
 
-  ./scripts/check_quality.sh material/30days-curriculum/<生成ファイル>
+  ./script/check_quality.sh material/30days-curriculum/<生成ファイル>
 
 このスクリプトは3つの検証を実行します：
 
@@ -492,7 +492,7 @@ throw new Error(msg);
 【必ず確認すること】
 生成後、必ずこのコマンドを実行して全てPASSを確認してください：
 ```bash
-./scripts/check_quality.sh material/30days-curriculum/
+./script/check_quality.sh material/30days-curriculum/
 ```
 
 1つでもFAILがあれば、その指摘に従って修正してください。

@@ -16,6 +16,9 @@ from prompt.agent.product_owner import (PRODUCT_OWNER_BACKSTORY_TEMPLATE,
                                         PRODUCT_OWNER_GOAL, PRODUCT_OWNER_ROLE)
 from prompt.agent.quality_pm import (QUALITY_PM_BACKSTORY_TEMPLATE,
                                      QUALITY_PM_GOAL, QUALITY_PM_ROLE)
+from prompt.agent.quality_validator import (
+    QUALITY_VALIDATOR_BACKSTORY_TEMPLATE, QUALITY_VALIDATOR_GOAL,
+    QUALITY_VALIDATOR_ROLE)
 from prompt.agent.validator import (VALIDATOR_BACKSTORY_TEMPLATE,
                                     VALIDATOR_GOAL, VALIDATOR_ROLE)
 from prompt.agent.scout import SCOUT_BACKSTORY_TEMPLATE, SCOUT_GOAL, SCOUT_ROLE
@@ -53,6 +56,10 @@ __all__ = [
     "PRODUCT_OWNER_ROLE",
     "PRODUCT_OWNER_GOAL",
     "PRODUCT_OWNER_BACKSTORY_TEMPLATE",
+    # Quality Validator
+    "QUALITY_VALIDATOR_ROLE",
+    "QUALITY_VALIDATOR_GOAL",
+    "QUALITY_VALIDATOR_BACKSTORY_TEMPLATE",
     # Validator
     "VALIDATOR_ROLE",
     "VALIDATOR_GOAL",

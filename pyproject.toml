@@ -27,6 +27,7 @@ dev = [
     "ruff>=0.4.0",
     "mypy>=1.10.0",
     "pytest>=8.0.0",
+    "types-PyYAML>=6.0.12",
 ]
 screenshot = [
     "playwright>=1.40.0",
@@ -81,6 +82,9 @@ select = [
 ignore = [
     "E501",   # line too long (handled by formatter)
     "B008",   # do not perform function calls in argument defaults
+    "RUF001", # Japanese prompt text intentionally uses full-width punctuation
+    "RUF002", # Japanese docstrings intentionally use full-width punctuation
+    "RUF003", # Japanese comments intentionally use full-width punctuation
 ]
 
 [tool.ruff.lint.isort]
@@ -103,6 +107,7 @@ strict = false
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
+disable_error_code = ["import-untyped"]
 
 # =============================================================================
 # Pytest Configuration

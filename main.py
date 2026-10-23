@@ -27,6 +27,7 @@ Prompt Management:
 """
 
 import argparse
+import copy
 import io
 import json
 import logging
@@ -452,7 +453,7 @@ def load_config(config_path: str) -> dict[str, Any]:
         SystemExit: 設定検証失敗時（エラーメッセージ付き）
     """
     # デフォルト設定と結合
-    config_dict = DEFAULT_CONFIG.copy()
+    config_dict = copy.deepcopy(DEFAULT_CONFIG)
 
     if config_path and Path(config_path).exists():
         try:

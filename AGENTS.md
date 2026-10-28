@@ -28,3 +28,9 @@ edu-creator - kouiso プロジェクト
 - 参照ファイルはローカル専用（`.git/info/exclude` か `/reference-local/`）に置く。
 - clone したら最初に `scripts/setup-hooks.sh` を実行する。pre-commit / commit-msg / pre-push フックが禁止語と秘密（gitleaks）を検知すると拒否する。
 - フックを `--no-verify` で回避しない。CI でも同じチェックが走る。
+
+## GitHub Project での作業管理
+
+- この repo の作業は GitHub Project（`.github/scrum-board.yml` の番号）で管理する
+- 次にやる物と、課題の起こし方は `.agents/skills/scrum-board/SKILL.md`
+- Status は Backlog / In progress / In review / Done の 4 つ。Todo は作らん

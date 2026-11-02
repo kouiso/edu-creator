@@ -271,7 +271,9 @@ def test_public_names_come_from_tracked_files(tmp_path):
     assert {"OPENAI_API_KEY", "HF_TOKEN", "GITHUB_TOKEN"} <= names
     assert "STRIPE_SECRET_KEY" not in names  # 文字のファイル以外は見ない
     assert content.scan(None, "HF_TOKEN を入れる", public=names) == []
-    assert ids(content.scan(None, "NEW_SERVICE_TOKEN を入れる", public=names)) == ["secret-name"]
+    assert ids(content.scan(None, "NEW_SERVICE" + "_TOKEN を入れる", public=names)) == [
+        "secret-name"
+    ]
 
 
 def test_public_names_outside_git_falls_back(tmp_path):
@@ -290,3 +292,53 @@ def test_key_across_chunk_boundary_is_found_once(offset):
 def test_line_numbers_follow_github_newlines_only():
     body = "a\u2028b\x0cc\n" + FAKE_AWS + "\r\nend"
     assert [h.place for h in content.scan(None, body)] == ["2"]
+
+
+def test_chunk_starts_keep_word_context():
+    # 区切り目（800文字ごと）でも、行全体で見た時と同じ判定になる
+    mid_word = "x" * 799 + "Z" + FAKE_AWS + " " + "y" * 400
+    assert content.scan(None, mid_word) == []
+    long_local = "a " * 395 + "abcdefghijklmnopqrst@gmail.com " + "b" * 600
+    assert [(h.rule_id, h.count) for h in content.scan(None, long_local)] == [("personal-email", 1)]
+    straddle = "x" * 797 + " AWS_SECRET_ACCESS_KEY " + "y" * 400
+    assert content.scan(None, straddle, public=frozenset({"AWS_SECRET_ACCESS_KEY"})) == []
+
+
+def test_company_and_amount_far_apart_on_one_long_line():
+    line = "株式会社テスト " + "x" * 3000 + " 100万円"
+    assert ids(content.scan(None, line)) == ["customer-amount"]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "BOS_TOKEN と EOS_TOKEN と PAD_TOKEN",
+        "TOKEN_LIMIT と TOKEN_COUNT と MAX_TOKENS",
+        "PRIVATE_KEY_PATH を指定",
+        "NEXT_PUBLIC_API_KEY は公開前提",
+        "コストは $0.003 / 1K tokens。お客様向け",
+        "モデル様式は 3ドル",
+        "ご担当者様 3,000円",
+        "sqlite:///./data.db",
+        "token: abc123 は例です",
+        "token=gpt4o-mini",
+        "XSS 対策として payload をエスケープ",
+    ],
+)
+def test_llm_tutorial_wording_stays_green(line):
+    assert content.scan(None, line) == []
+
+
+def test_generic_names_are_flagged_with_the_real_repo_list():
+    # 本番と同じく、このリポの公開済みの名前を使っても、一般的な秘密の名前は当たる
+    public = content.public_names(Path(__file__).resolve().parent.parent)
+    for name in ("SECRET" + "_KEY", "API" + "_KEY", "PRIVATE" + "_KEY", "DB" + "_PASSWORD"):
+        assert ids(content.scan(None, f"{name} を設定", public=public)) == ["secret-name"], name
+    assert "NEW_SERVICE" + "_TOKEN" not in public
+
+
+def test_report_caps_places_to_stay_under_comment_limit():
+    body = "\n".join("taro.yamada@gmail.com" for _ in range(30000))
+    text = content.report("この issue", content.scan(None, body))
+    assert "ほか29980か所" in text
+    assert len(text) < 65536

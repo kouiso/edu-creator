@@ -24,6 +24,8 @@ from repobot.api import (
     upsert_comment,
 )
 
+# 公開内容チェックで見ない書き手（AI のエージェントなど他のボットは見る）
+SKIP_CONTENT_AUTHORS = frozenset({"dependabot[bot]"})
 CONTENT_MARKER = "<!-- repobot:public-content:{key} -->"
 FORM_MARKER = "<!-- repobot:format -->"
 
@@ -99,10 +101,11 @@ def run_content(event_name: str, event: dict[str, Any], client: Any, env: dict[s
         # この自動化自身の報告。中身は規則名と行番号だけなので検査しない
         _log("この自動化自身のコメントなので検査しない")
         return 0
-    if is_bot(author):
-        # ボット（Dependabot のリリースノート、レビューボットの引用など）は、上流や既存の公開物の写し。
-        # 毎回赤と「要確認」の公開コメントが付くと人の書いた物の警告が埋もれるので見ない
-        _log(f"ボットが書いたものなので検査しない: {author.get('login')}")
+    sender = event.get("sender") or author
+    if author.get("login") in SKIP_CONTENT_AUTHORS and sender.get("login") in SKIP_CONTENT_AUTHORS:
+        # Dependabot のリリースノートは上流の公開物の写し。毎回赤と「要確認」の公開コメントが付くと
+        # 人の書いた物の警告が埋もれるので見ない。人が書き換えた時（sender が人）は見る
+        _log(f"Dependabot が書いたものなので検査しない: {author.get('login')}")
         return 0
     forbidden, broken = content.load_forbidden(env.get("REPOBOT_FORBIDDEN_PATTERNS"))
     if broken:

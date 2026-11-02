@@ -54,8 +54,17 @@ _TEXT_SUFFIXES = {
 }
 
 
-def _has_underscore(name: str) -> bool:
-    return "_" in name
+# 名前に TOKEN などを含んでも秘密ではない、よくある言葉（LLM の特別な記号・上限・数・公開前提の名前）
+_ORDINARY_NAME = re.compile(
+    r"^(?:BOS|EOS|PAD|UNK|SEP|CLS|MASK|START|END|STOP)_TOKENS?$"
+    r"|(?:^|_)TOKENS?_(?:LIMIT|LIMITS|COUNT|COUNTS|LEN|LENGTH|ID|IDS|TYPE|USAGE|BUDGET)$"
+    r"|^NEXT_PUBLIC_|_(?:PATH|FILE|DIR|NAME|ENV)$",
+    re.ASCII,
+)
+
+
+def _secret_like(name: str) -> bool:
+    return "_" in name and not _ORDINARY_NAME.search(name)
 
 
 def public_names(root: str | Path = ".") -> frozenset[str]:
@@ -72,6 +81,9 @@ def public_names(root: str | Path = ".") -> frozenset[str]:
         return _ALWAYS_PUBLIC_NAMES
     names = set(_ALWAYS_PUBLIC_NAMES)
     for rel in out.splitlines():
+        # テストの作り物と、この検査自身の規則の文字列は「公開済みの名前」に数えない
+        if rel.startswith(("tests/", "scripts/repobot/")):
+            continue
         path = root / rel
         if path.suffix not in _TEXT_SUFFIXES and not path.name.startswith(".env"):
             continue
@@ -150,8 +162,15 @@ class Rule:
     rule_id: str
     label: str
     patterns: tuple[re.Pattern[str], ...] = ()
-    # 同じ行に揃って現れないと当たりにしない組み（例: 会社名と金額）
+    # 同じ行に揃って現れないと当たりにしない組み（例: 会社名と金額）。行全体で見る
     requires: tuple[re.Pattern[str], ...] = ()
+    # この言葉が同じ行にあれば当たりにしない（例: 「XSS 対策」のような守る側の話）。行全体で見る
+    excludes: tuple[re.Pattern[str], ...] = ()
+
+    def applies_to(self, line: str) -> bool:
+        return all(r.search(line) for r in self.requires) and not any(
+            e.search(line) for e in self.excludes
+        )
 
     def starts(self, text: str, public: frozenset[str]) -> list[int]:
         """当たった位置（文字の番号）。"""
@@ -159,7 +178,7 @@ class Rule:
             return [
                 m.start()
                 for m in _SECRET_NAME.finditer(text)
-                if _has_underscore(m.group(0)) and m.group(0) not in public
+                if _secret_like(m.group(0)) and m.group(0) not in public
             ]
         if self.rule_id == "personal-email":
             return [
@@ -169,8 +188,6 @@ class Rule:
                 and not _NON_PERSONAL_DOMAIN.search(m.group(1))
                 and not _NON_PERSONAL_LOCAL.match(m.group(0).split("@", 1)[0])
             ]
-        if any(not r.search(text) for r in self.requires):
-            return []
         return [m.start() for p in self.patterns for m in p.finditer(text)]
 
 
@@ -191,9 +208,12 @@ RULES: tuple[Rule, ...] = (
         )
         + _c(
             # 値は英字と数字の両方を含むものだけ。版番号（v1.2.3）と場所（/tmp/…）は値と見なさない
-            r"(?<![A-Za-z0-9])(?:password|passwd|pwd|secret|token|api[_-]?key|パスワード)\s*[:=：]\s*['\"]?"
+            # パスワードは8文字以上、鍵やトークンは16文字以上（「token=gpt4o-mini」のような例を拾わない）
+            r"(?<![A-Za-z0-9])(?:password|passwd|pwd|パスワード)\s*[:=：]\s*['\"]?"
             r"(?!v?\d+(?:\.\d+)+(?![A-Za-z0-9]))(?![/.~])"
-            r"(?=[^\s'\"]*[0-9])(?=[^\s'\"]*[A-Za-z])[A-Za-z0-9+/=_.!@#$%^&*~-]{6,}",
+            r"(?=[^\s'\"]*[0-9])(?=[^\s'\"]*[A-Za-z])[A-Za-z0-9+/=_.!@#$%^&*~-]{8,}",
+            r"(?<![A-Za-z0-9])(?:secret|token|api[_-]?key)\s*[:=：]\s*['\"]?"
+            r"(?![/.~])(?=[^\s'\"]*[0-9])(?=[^\s'\"]*[A-Za-z])[A-Za-z0-9+/=_.!@#$%^&*~-]{16,}",
             flags=re.IGNORECASE,
         ),
     ),
@@ -209,6 +229,10 @@ RULES: tuple[Rule, ...] = (
             r"\b(?:sql ?injection|xss|ssrf|rce)\b.{0,40}\bpayload\b",
             flags=re.IGNORECASE,
         ),
+        excludes=_c(
+            r"対策|防ぐ|防止|防御|エスケープ|サニタイズ|\bescap|\bsanitiz|\bmitigat|\bprevent",
+            flags=re.IGNORECASE,
+        ),
     ),
     Rule(
         "database",
@@ -216,7 +240,7 @@ RULES: tuple[Rule, ...] = (
         _c(
             # 手元の練習用（localhost・127.0.0.1・:memory:）は除く
             r"\b(?:postgres(?:ql)?|mysql|mariadb|mongodb|rediss?|mssql|sqlserver|sqlite)(?:\+[a-z0-9]+)?://"
-            r"(?!(?:[^@\s/]*@)?(?:localhost|127\.0\.0\.1|\[::1\])(?![A-Za-z0-9.-]))(?!/?:memory:)\S+",
+            r"(?!(?:[^@\s/]*@)?(?:localhost|127\.0\.0\.1|\[::1\])(?![A-Za-z0-9.-]))(?!/?:memory:)(?!/\.{1,2}/)\S+",
             # 型の注釈（db_name: str）は値ではない
             r"(?:\b(?:db|database)|データベース)[ _-]?(?:name|id|名)\s*[:=：]\s*"
             r"(?!(?:str|int|Optional|None|Any)\b)\S+",
@@ -231,7 +255,7 @@ RULES: tuple[Rule, ...] = (
             # 「会社の」「各社の」「この様に」「仕様」などの普通の言葉は除く
             r"株式会社|有限会社|合同会社|[(（]株[)）]|㈱|商事|御中|顧客|取引先"
             r"|(?<![会各自他本弊御貴当])社(?:に|へ|から|様)"
-            r"|(?<![仕同多模異こそあどの])様(?![子々])|\bcustomer\b",
+            r"|(?<![仕同多模異こそあどの客者])様(?![子々式相])|\bcustomer\b",
             flags=re.IGNORECASE,
         ),
     ),
@@ -282,12 +306,24 @@ class Hit:
 
 
 def _chunked_starts(text: str, find: Callable[[str], Iterable[int]]) -> set[int]:
-    """長い行を重ねながら区切って探し、当たった位置を行全体の番号でまとめる（重なりの二重数えは消える）。"""
+    """長い行を区切って探し、当たった位置を行全体の番号で返す。
+
+    区切りごとに前後へ OVERLAP 文字の文脈を付けて探し、その区切りの持ち分で始まる当たりだけ数える。
+    こうすると区切り目でも \\b や前後の判定が行全体と同じになり、1つの当たりを二重に数えない。
+    """
+    if len(text) <= CHUNK:
+        return set(find(text))
     found: set[int] = set()
     step = CHUNK - OVERLAP
-    for j in range(0, max(len(text), 1), step):
-        found.update(j + s for s in find(text[j : j + CHUNK]))
-        if j + CHUNK >= len(text):
+    for j in range(0, len(text), step):
+        left = max(0, j - OVERLAP)
+        window = text[left : j + CHUNK]
+        last = j + CHUNK >= len(text)
+        for s in find(window):
+            pos = left + s
+            if pos >= j and (last or pos < j + step):
+                found.add(pos)
+        if last:
             break
     return found
 
@@ -309,6 +345,8 @@ def scan(
     hits: list[Hit] = []
     for place, line in lines:
         for rule in RULES:
+            if not rule.applies_to(line):
+                continue
             n = len(_chunked_starts(line, lambda t, r=rule: r.starts(t, public)))
             if n:
                 hits.append(Hit(rule.rule_id, place, n))
@@ -336,6 +374,9 @@ def summarize(hits: list[Hit]) -> list[tuple[str, list[str], int]]:
     return out
 
 
+MAX_PLACES = 20
+
+
 def _place_text(places: list[str]) -> str:
     def one(p: str) -> str:
         if p == TITLE:
@@ -344,7 +385,11 @@ def _place_text(places: list[str]) -> str:
             return "（非表示）"
         return f"{p}行目"
 
-    return "、".join(one(p) for p in places)
+    # コメントは 65536 文字までなので、場所は先頭の数件だけ出す
+    shown = "、".join(one(p) for p in places[:MAX_PLACES])
+    if len(places) > MAX_PLACES:
+        shown += f" ほか{len(places) - MAX_PLACES}か所"
+    return shown
 
 
 def report(target: str, hits: list[Hit]) -> str:

@@ -6,6 +6,7 @@ GitHub には繋がず、偽の API（FakeGitHub）で呼び出しを記録し�
 """
 
 import json
+import shutil
 import sys
 import threading
 import urllib.parse
@@ -195,12 +196,23 @@ def test_outsider_comment_with_marker_is_never_edited():
     assert (method, path) == ("POST", f"/repos/{REPO}/issues/5/comments")
 
 
-def test_content_skips_other_bots_but_not_people():
+def test_content_skips_only_dependabot_written_bodies():
     gh = FakeGitHub()
     dep = pr_event(f"release notes by {FAKE_MAIL}", login="dependabot[bot]")
+    dep["sender"] = {"login": "dependabot[bot]", "type": "Bot"}
     assert cli.run_content("pull_request_target", dep, gh, {}) == 0
     assert gh.calls == []
     assert cli.run_content("pull_request_target", pr_event(FAKE_MAIL), gh, {}) == 1
+
+
+def test_content_checks_ai_agent_bots_and_human_edits_of_bot_bodies():
+    # AI のエージェントなど、Dependabot 以外のボットが書いたものは見る
+    agent = pr_event(FAKE_MAIL, login="claude[bot]")
+    assert cli.run_content("pull_request_target", agent, FakeGitHub(), {}) == 1
+    # Dependabot の PR でも、人が本文を書き換えた時は見る
+    edited = pr_event(FAKE_MAIL, action="edited", login="dependabot[bot]")
+    edited["sender"] = {"login": "alice", "type": "User"}
+    assert cli.run_content("pull_request_target", edited, FakeGitHub(), {}) == 1
 
 
 def test_content_scans_review_bodies():
@@ -543,22 +555,36 @@ def test_auto_merge_waits_for_ci_and_only_grouped_minor_patch():
     assert '--match-head-commit "$SHA"' in run
 
 
-def test_auto_merge_branch_filter_behaviour(tmp_path):
+FAKE_GH_SCRIPT = """#!/bin/sh
+echo "gh $*" >> "$LOG"
+if [ "$1" = pr ] && [ "$2" = list ]; then
+  while [ $# -gt 0 ]; do
+    if [ "$1" = --jq ]; then printf '%s' "$PRS" | jq -r "$2"; exit 0; fi
+    shift
+  done
+fi
+exit 0
+"""
+
+
+@pytest.mark.skipif(shutil.which("jq") is None, reason="jq が無い環境")
+def test_auto_merge_branch_and_author_filter_behaviour(tmp_path):
     import subprocess
 
     run = load("dependabot-auto-merge.yml")["jobs"]["merge"]["steps"][0]["run"]
     fake = tmp_path / "gh"
-    fake.write_text(
-        '#!/bin/sh\necho "gh $*" >> "$LOG"\n[ "$1" = pr ] && [ "$2" = list ] && echo 12\nexit 0\n'
-    )
+    fake.write_text(FAKE_GH_SCRIPT)
     fake.chmod(0o755)
     log = tmp_path / "log"
+    dependabot = json.dumps([{"number": 12, "author": {"login": "app/dependabot", "is_bot": True}}])
+    someone = json.dumps([{"number": 13, "author": {"login": "mallory", "is_bot": False}}])
 
-    def go(branch):
+    def go(branch, prs=dependabot):
         log.write_text("")
         env = {
             "PATH": f"{tmp_path}:/usr/bin:/bin",
             "LOG": str(log),
+            "PRS": prs,
             "REPO": REPO,
             "BRANCH": branch,
             "SHA": "abc",
@@ -569,6 +595,8 @@ def test_auto_merge_branch_filter_behaviour(tmp_path):
 
     merged = go("dependabot/uv/minor-patch-1a2b3c")
     assert "gh pr merge 12 --repo owner/repo --squash --match-head-commit abc" in merged
+    # 同じ名前のブランチでも、Dependabot 以外が開いた PR はマージしない
+    assert "pr merge" not in go("dependabot/uv/minor-patch-1a2b3c", prs=someone)
     # 安全性の更新・major の個別 PR はまとめ PR ではないので、何も呼ばない
     assert go("dependabot/uv/requests-2.32.4") == ""
     assert go("dependabot/uv/minor-patch") == ""

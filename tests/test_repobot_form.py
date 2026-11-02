@@ -182,6 +182,10 @@ def test_report_lists_missing_and_ok():
         ("文中の ### は変えない", "文中の ### は変えない"),
         ("### A\r\n#### B\r\n", "## A\r\n### B\r\n"),
         ("", ""),
+        # 手で書いた階層（## の下の ###）はこわさない
+        ("## 背景\n### 詳細", "## 背景\n### 詳細"),
+        # 区切りは同じ記号で閉じる。``` の中の ~~~ で外に出たと見なさない
+        ("### a\n```\n~~~\n### 中\n```\n### b", "## a\n```\n~~~\n### 中\n```\n## b"),
     ],
 )
 def test_heading_fix(before, after):
@@ -192,3 +196,16 @@ def test_heading_fix_runs_once_and_handles_none():
     once = heading.fix("#### B")
     assert once == "### B"
     assert heading.fix(None) == ""
+
+
+def test_subheading_only_or_empty_number_is_not_content():
+    body = GOOD_ISSUE.replace("表示が遅い。", "### 補足").replace("1. 計測する", "1.")
+    assert form.check_issue(body) == [
+        "「背景」の中身が書かれていません",
+        "「次にやること」の中身が書かれていません",
+    ]
+
+
+def test_relation_accepts_issue_url():
+    body = GOOD_PR.replace("Closes #12", "Closes https://github.com/kouiso/edu-creator/issues/6")
+    assert form.check_pr(body) == []

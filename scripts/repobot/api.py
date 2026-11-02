@@ -56,6 +56,10 @@ class GitHub:
             page += 1
 
 
+# workflow の GITHUB_TOKEN で書いたコメントの作者
+BOT_LOGIN = "github-actions[bot]"
+
+
 def upsert_comment(
     client: Any, number: int, marker: str, body: str, create_if_missing: bool = True
 ) -> str:
@@ -66,7 +70,10 @@ def upsert_comment(
     full = f"{marker}\n{body}"
     comments = client.paginate(f"/repos/{client.repo}/issues/{number}/comments")
     for c in comments:
-        if marker in (c.get("body") or ""):
+        # 自分（workflow のボット）が書いたコメントだけを見る。他人が目印を書き写しても乗っ取れない
+        if (c.get("user") or {}).get("login") != BOT_LOGIN:
+            continue
+        if (c.get("body") or "").startswith(marker):
             if c.get("body") == full:
                 return "unchanged"
             client.request(

@@ -446,7 +446,8 @@ def test_dependabot_config_matches_the_issue():
     with open(ROOT / ".github" / "dependabot.yml", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     assert cfg["version"] == 2
-    assert {u["package-ecosystem"] for u in cfg["updates"]} == {"uv", "github-actions"}
+    # 同時に開く PR の上限は項目ごとに数えられるので、項目は1つに限る（合計2本まで）
+    assert [u["package-ecosystem"] for u in cfg["updates"]] == ["uv"]
     for u in cfg["updates"]:
         assert u["schedule"] == {"interval": "monthly", "time": "09:00", "timezone": "Asia/Tokyo"}
         assert u["cooldown"] == {"default-days": 3}

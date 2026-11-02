@@ -15,7 +15,14 @@ import sys
 from typing import Any
 
 from repobot import content, form, heading, triage
-from repobot.api import GitHub, GitHubError, ensure_labels, is_bot, upsert_comment
+from repobot.api import (
+    BOT_LOGIN,
+    GitHub,
+    GitHubError,
+    ensure_labels,
+    is_bot,
+    upsert_comment,
+)
 
 CONTENT_MARKER = "<!-- repobot:public-content:{key} -->"
 FORM_MARKER = "<!-- repobot:format -->"
@@ -27,8 +34,8 @@ def _log(msg: str) -> None:
 
 def _target(
     event_name: str, event: dict[str, Any]
-) -> tuple[int, str, str | None, str | None, str] | None:
-    """(issue/PR 番号, 目印の鍵, 題, 本文, 報告で使う呼び名) を返す。対象外なら None。"""
+) -> tuple[int, str, str | None, str | None, str, dict[str, Any]] | None:
+    """(issue/PR 番号, 目印の鍵, 題, 本文, 報告で使う呼び名, 書いた人) を返す。対象外なら None。"""
     if event_name == "issues":
         issue = event["issue"]
         return (
@@ -37,29 +44,47 @@ def _target(
             issue.get("title"),
             issue.get("body"),
             "この issue の題か本文",
+            issue.get("user") or {},
         )
     if event_name in ("pull_request", "pull_request_target"):
         pr = event["pull_request"]
-        return pr["number"], "body", pr.get("title"), pr.get("body"), "この PR の題か本文"
+        return (
+            pr["number"],
+            "body",
+            pr.get("title"),
+            pr.get("body"),
+            "この PR の題か本文",
+            pr.get("user") or {},
+        )
     if event_name == "issue_comment":
         c = event["comment"]
-        url = c.get("html_url", "")
         return (
             event["issue"]["number"],
             f"comment-{c['id']}",
             None,
             c.get("body"),
-            f"[このコメント]({url})",
+            f"[このコメント]({c.get('html_url', '')})",
+            c.get("user") or {},
         )
     if event_name == "pull_request_review_comment":
         c = event["comment"]
-        url = c.get("html_url", "")
         return (
             event["pull_request"]["number"],
             f"review-comment-{c['id']}",
             None,
             c.get("body"),
-            f"[このレビューコメント]({url})",
+            f"[このレビューコメント]({c.get('html_url', '')})",
+            c.get("user") or {},
+        )
+    if event_name == "pull_request_review":
+        r = event["review"]
+        return (
+            event["pull_request"]["number"],
+            f"review-{r['id']}",
+            None,
+            r.get("body"),
+            f"[このレビュー]({r.get('html_url', '')})",
+            r.get("user") or {},
         )
     return None
 
@@ -69,8 +94,9 @@ def run_content(event_name: str, event: dict[str, Any], client: Any, env: dict[s
     if target is None:
         _log(f"対象外のイベント: {event_name}")
         return 0
-    number, key, title, body, name = target
-    if "<!-- repobot:" in (body or ""):
+    number, key, title, body, name, author = target
+    if author.get("login") == BOT_LOGIN:
+        # この自動化自身の報告。中身は規則名と行番号だけなので検査しない
         _log("この自動化自身のコメントなので検査しない")
         return 0
     forbidden, broken = content.load_forbidden(env.get("REPOBOT_FORBIDDEN_PATTERNS"))
@@ -124,12 +150,15 @@ def run_heading(event_name: str, event: dict[str, Any], client: Any, env: dict[s
     if event_name != "issues":
         return 0
     issue = event["issue"]
-    before = issue.get("body") or ""
+    path = f"/repos/{client.repo}/issues/{issue['number']}"
+    # 作られた直後に書き直された分を消さないよう、最新の本文を取り直してから直す
+    latest = client.request("GET", path) or {}
+    before = latest.get("body", issue.get("body")) or ""
     after = heading.fix(before)
     if after == before:
         _log("見出しの直しは不要")
         return 0
-    client.request("PATCH", f"/repos/{client.repo}/issues/{issue['number']}", {"body": after})
+    client.request("PATCH", path, {"body": after})
     _log("見出しを1段浅くしました")
     return 0
 

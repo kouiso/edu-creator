@@ -60,7 +60,9 @@ def test_secret_name_is_flagged_but_public_names_are_not():
     [
         "攻撃手順はこう",
         "認証の突破方法を書く",
-        "exploit PoC steps: 1. send this",
+        "exploit PoC payload: 1. send this",
+        "この脆弱性は次の手順で再現できます",
+        "SQLインジェクションのペイロードはこれ",
         "SQL injection payload は次の通り",
     ],
 )
@@ -163,3 +165,53 @@ def test_japanese_next_to_ascii_is_still_caught():
 )
 def test_common_wording_is_not_flagged(line):
     assert content.scan(None, line) == []
+
+
+FAKE_STRIPE = "sk" + "_live_" + "Z" * 24
+
+
+@pytest.mark.parametrize(
+    "line, rule",
+    [
+        (FAKE_STRIPE, "secret-value"),
+        ("db_" + "password=hunter2pass", "secret-value"),
+        ("パスワード: hunter2pass", "secret-value"),
+        ("SECRET" + "_KEY を設定", "secret-name"),
+        ("API" + "_KEY を入れる", "secret-name"),
+        ("postgresql+asyncpg://u:p@h/app", "database"),
+        ("rediss://cache.internal:6380", "database"),
+        ("sqlite:///data/app.db", "database"),
+        ("ABC社に500万円", "customer-amount"),
+        ("(株)山田 300万円", "customer-amount"),
+        ("山田商事様 300万円", "customer-amount"),
+    ],
+)
+def test_previously_missed_cases_turn_red(line, rule):
+    assert rule in ids(content.scan(None, line))
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "git clone git@github.com:kouiso/edu-creator.git",
+        "Co-Authored-By: Claude <noreply@anthropic.com>",
+        "token: 200000 まで",
+        "Token = abcdef の上限",
+        "pwd: /srv/app/work",
+        "Fix XSS in markdown preview (steps below)",
+        "the API client costs $5/month",
+        "仕様では 500円 単位",
+    ],
+)
+def test_ordinary_text_stays_green(line):
+    assert content.scan(None, line) == []
+
+
+def test_very_long_line_is_scanned_quickly_and_still_caught():
+    import time
+
+    line = "顧客 " + "1," * 30000 + " " + FAKE_GH
+    start = time.monotonic()
+    hits = content.scan(None, line)
+    assert time.monotonic() - start < 5
+    assert "secret-value" in ids(hits)

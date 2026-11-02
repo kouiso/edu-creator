@@ -4,7 +4,8 @@ name: PR triage
 # ボットの PR には担当者を付けない。担当者付けに失敗してもラベル付けは続ける。既にあるラベルは消さない。
 on:
   pull_request_target:
-    types: [opened, reopened, synchronize]
+    # push のたびには動かさない（人が外したラベルを付け直さないため）
+    types: [opened, reopened]
 
 permissions:
   contents: read

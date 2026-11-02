@@ -30,12 +30,13 @@ FAKE_MAIL = "taro.yamada" + "@gmail.com"
 class FakeGitHub:
     """呼ばれた API を記録する偽物。fail に (method, path の一部) を入れるとその呼び出しで失敗する。"""
 
-    def __init__(self, comments=None, files=None, fail=(), missing_labels=()):
+    def __init__(self, comments=None, files=None, fail=(), missing_labels=(), issue=None):
         self.repo = REPO
         self.comments = comments or []
         self.files = files or []
         self.fail = fail
         self.missing_labels = set(missing_labels)
+        self.issue = issue or {}
         self.calls = []
 
     def request(self, method, path, body=None):
@@ -47,6 +48,8 @@ class FakeGitHub:
             name = urllib.parse.unquote(path.rsplit("/", 1)[1])
             if name in self.missing_labels:
                 raise GitHubError(404, path, "Not Found")
+        if method == "GET" and "/issues/" in path:
+            return self.issue
         return {}
 
     def paginate(self, path):
@@ -59,6 +62,14 @@ class FakeGitHub:
 
     def writes(self):
         return [c for c in self.calls if c[0] != "GET"]
+
+
+BOT = {"login": "github-actions[bot]", "type": "Bot"}
+
+
+def bot_comment(cid, body):
+    """この自動化が前に書いたコメント。"""
+    return {"id": cid, "body": body, "user": BOT}
 
 
 def issue_event(body, title="題", action="opened", login="alice", labels=None):
@@ -109,7 +120,7 @@ def test_content_green_posts_nothing_when_never_red():
 
 
 def test_content_fixed_updates_previous_comment_to_ok():
-    old = {"id": 77, "body": "<!-- repobot:public-content:body -->\n要確認"}
+    old = bot_comment(77, "<!-- repobot:public-content:body -->\n要確認")
     gh = FakeGitHub(comments=[old])
     assert cli.run_content("issues", issue_event("直した", action="edited"), gh, {}) == 0
     [(method, path, body)] = gh.writes()
@@ -153,14 +164,45 @@ def test_content_uses_forbidden_list_from_env():
     assert "指定の禁止語" in gh.writes()[0][2]["body"]
 
 
-def test_content_skips_own_comments():
+def test_content_skips_only_comments_written_by_this_automation():
     gh = FakeGitHub()
     event = {
         "issue": {"number": 3},
-        "comment": {"id": 1, "body": "<!-- repobot:format -->\nx " + FAKE_MAIL},
+        "comment": {"id": 1, "body": "要確認 " + FAKE_MAIL, "user": BOT},
     }
     assert cli.run_content("issue_comment", event, gh, {}) == 0
     assert gh.calls == []
+
+
+def test_hidden_marker_does_not_bypass_the_check():
+    # 目印を本文に隠しても、ボット以外が書いたものは検査する
+    gh = FakeGitHub()
+    body = f"{FAKE_MAIL} <!-- repobot:format -->"
+    event = {"issue": {"number": 3}, "comment": {"id": 1, "body": body, "user": {"login": "eve"}}}
+    assert cli.run_content("issue_comment", event, gh, {}) == 1
+    assert cli.run_content("issues", issue_event(f"<!-- repobot: --> {FAKE_MAIL}"), gh, {}) == 1
+
+
+def test_outsider_comment_with_marker_is_never_edited():
+    planted = {
+        "id": 66,
+        "body": "<!-- repobot:public-content:body -->\nOK",
+        "user": {"login": "eve"},
+    }
+    gh = FakeGitHub(comments=[planted])
+    assert cli.run_content("issues", issue_event(FAKE_MAIL), gh, {}) == 1
+    [(method, path, _body)] = gh.writes()
+    assert (method, path) == ("POST", f"/repos/{REPO}/issues/5/comments")
+
+
+def test_content_scans_review_bodies():
+    gh = FakeGitHub()
+    event = {
+        "pull_request": {"number": 9},
+        "review": {"id": 43, "body": FAKE_MAIL, "html_url": "u", "user": {"login": "bob"}},
+    }
+    assert cli.run_content("pull_request_review", event, gh, {}) == 1
+    assert "<!-- repobot:public-content:review-43 -->" in gh.writes()[0][2]["body"]
 
 
 def test_content_still_red_when_comment_cannot_be_written():
@@ -185,7 +227,7 @@ def test_form_red_then_green_updates_the_same_comment():
     [(method, _, body)] = gh.writes()
     assert method == "POST" and body["body"].startswith(cli.FORM_MARKER)
 
-    gh2 = FakeGitHub(comments=[{"id": 8, "body": body["body"]}])
+    gh2 = FakeGitHub(comments=[bot_comment(8, body["body"])])
     assert cli.run_form("issues", issue_event(GOOD_ISSUE, action="edited"), gh2, {}) == 0
     [(method, path, body2)] = gh2.writes()
     assert (method, path) == ("PATCH", f"/repos/{REPO}/issues/comments/8")
@@ -196,7 +238,7 @@ def test_form_same_result_does_not_repost():
     gh = FakeGitHub()
     cli.run_form("issues", issue_event("## 背景\na"), gh, {})
     posted = gh.writes()[0][2]["body"]
-    gh2 = FakeGitHub(comments=[{"id": 8, "body": posted}])
+    gh2 = FakeGitHub(comments=[bot_comment(8, posted)])
     assert cli.run_form("issues", issue_event("## 背景\na", action="edited"), gh2, {}) == 1
     assert gh2.writes() == []
 
@@ -240,9 +282,18 @@ def test_heading_patches_only_when_changed():
     assert gh.writes() == [("PATCH", f"/repos/{REPO}/issues/5", {"body": "## 背景\na"})]
     gh2 = FakeGitHub()
     assert cli.run_heading("issues", issue_event("## 背景\na"), gh2, {}) == 0
-    assert gh2.calls == []
-    assert cli.run_heading("pull_request_target", pr_event("### x"), gh2, {}) == 0
-    assert gh2.calls == []
+    assert gh2.writes() == []
+    gh3 = FakeGitHub()
+    assert cli.run_heading("pull_request_target", pr_event("### x"), gh3, {}) == 0
+    assert gh3.calls == []
+
+
+def test_heading_uses_latest_body_so_quick_edits_are_kept():
+    gh = FakeGitHub(issue={"body": "### 背景\n直後に書き足した"})
+    assert cli.run_heading("issues", issue_event("### 背景\n最初の本文"), gh, {}) == 0
+    assert gh.writes() == [
+        ("PATCH", f"/repos/{REPO}/issues/5", {"body": "## 背景\n直後に書き足した"})
+    ]
 
 
 # ---- 担当者とラベル ----
@@ -300,7 +351,7 @@ def test_triage_continues_when_assignment_fails():
     )
 
 
-def test_triage_synchronize_does_not_reassign_and_no_labels_means_no_call():
+def test_triage_without_matching_labels_makes_no_label_call():
     gh = FakeGitHub(files=[{"filename": "core/a.py"}])
     cli.run_triage(
         "pull_request_target", pr_event("", action="synchronize", ref="claude/x"), gh, {}
@@ -346,10 +397,16 @@ def test_path_labels_follow_repo_layout():
 
 
 def test_upsert_comment_paths():
-    gh = FakeGitHub(comments=[{"id": 1, "body": "他の人のコメント"}])
+    gh = FakeGitHub(
+        comments=[
+            {"id": 1, "body": "他の人のコメント", "user": {"login": "eve"}},
+            {"id": 2, "body": "<!-- m -->\nx", "user": {"login": "eve"}},
+            bot_comment(4, "引用: <!-- m -->"),
+        ]
+    )
     assert upsert_comment(gh, 2, "<!-- m -->", "x", create_if_missing=False) == "skipped"
     assert upsert_comment(gh, 2, "<!-- m -->", "x") == "created"
-    gh2 = FakeGitHub(comments=[{"id": 3, "body": "<!-- m -->\nx"}])
+    gh2 = FakeGitHub(comments=[bot_comment(3, "<!-- m -->\nx")])
     assert upsert_comment(gh2, 2, "<!-- m -->", "x") == "unchanged"
     assert upsert_comment(gh2, 2, "<!-- m -->", "y") == "updated"
 
@@ -432,14 +489,14 @@ def test_workflow_triggers_cover_the_issue_scope():
         "issue_comment",
         "pull_request_target",
         "pull_request_review_comment",
+        "pull_request_review",
     }
     assert set(on("issue-pr-format-check.yml")) == {"issues", "pull_request_target"}
     assert on("issue-heading-fix.yml") == {"issues": {"types": ["opened"]}}
-    assert set(on("pr-triage.yml")["pull_request_target"]["types"]) == {
-        "opened",
-        "reopened",
-        "synchronize",
-    }
+    # push（synchronize）では動かさない。人が外したラベルを付け直さないため
+    assert set(on("pr-triage.yml")["pull_request_target"]["types"]) == {"opened", "reopened"}
+    group = load("public-content-check.yml")["concurrency"]["group"]
+    assert "github.event.comment.id" in group and "github.event.review.id" in group
 
 
 def test_dependabot_config_matches_the_issue():

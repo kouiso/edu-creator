@@ -19,7 +19,8 @@ PR_SECTIONS: dict[str, tuple[str, ...]] = {
 }
 
 RELATION = re.compile(
-    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?)\b\s*:?\s*(?:[\w.-]+/[\w.-]+)?#\d+",
+    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?)\b\s*:?\s*"
+    r"(?:(?:[\w.-]+/[\w.-]+)?#\d+|https://github\.com/[\w.-]+/[\w.-]+/(?:issues|pull)/\d+)",
     re.IGNORECASE,
 )
 
@@ -28,7 +29,7 @@ _FENCE = re.compile(r"^ {0,3}(```|~~~)")
 _COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _NOTE = re.compile(r"[（(](?:必須|任意)[）)]")
 # 中身として数えない行: 箇条書きの印だけ、空のチェックボックス、フォームが入れる「回答なし」
-_EMPTY_LINE = re.compile(r"^(?:[-*+>]\s*)*(?:\[[ xX]?\]\s*)?(?:_No response_)?\s*$")
+_EMPTY_LINE = re.compile(r"^(?:(?:[-*+>]|\d+[.)])\s*)*(?:\[[ xX]?\]\s*)?(?:_No response_)?\s*$")
 
 ALERT_LABEL = re.compile(r"alert|アラート", re.IGNORECASE)
 
@@ -65,7 +66,11 @@ def sections(body: str | None) -> dict[str, str]:
 
 
 def has_content(text: str | None) -> bool:
-    return any(not _EMPTY_LINE.match(line) for line in (text or "").splitlines())
+    # 小見出しだけ・空の番号だけの節は未記入として扱う
+    return any(
+        not _EMPTY_LINE.match(line) and not _HEADING.match(line)
+        for line in (text or "").splitlines()
+    )
 
 
 def _find(secs: dict[str, str], names: tuple[str, ...]) -> str | None:

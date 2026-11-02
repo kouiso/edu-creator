@@ -30,15 +30,20 @@ class Rule:
 
 
 def _c(*patterns: str, flags: int = 0) -> tuple[re.Pattern[str], ...]:
-    return tuple(re.compile(p, flags) for p in patterns)
+    # re.ASCII: 日本語の文字を「単語の文字」と見なさない。そうしないと「連絡はtaro@…」のように
+    # 日本語と英数字が続いた所で \b が効かず、見逃す
+    return tuple(re.compile(p, flags | re.ASCII) for p in patterns)
 
 
 # GitHub が workflow へ自動で渡す、公開して問題の無い名前
 _PUBLIC_SECRET_NAMES = {"GITHUB_TOKEN", "GH_TOKEN", "ACTIONS_RUNTIME_TOKEN"}
 _SECRET_NAME = re.compile(
-    r"\b[A-Z][A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|APIKEY|PRIVATE_KEY|ACCESS_KEY)[A-Z0-9_]*\b"
+    r"\b[A-Z][A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|APIKEY|PRIVATE_KEY|ACCESS_KEY)[A-Z0-9_]*\b",
+    re.ASCII,
 )
-_EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})\b")
+_EMAIL = re.compile(
+    r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})(?![A-Za-z0-9-])"
+)
 # 個人に届かない送り先（GitHub の noreply、文書用の例示ドメイン）
 _NON_PERSONAL_DOMAIN = re.compile(
     r"(?:^|\.)(?:users\.noreply\.github\.com|noreply\.github\.com|example\.(?:com|org|net)|example)$",
@@ -60,7 +65,7 @@ RULES: tuple[Rule, ...] = (
             r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b",
         )
         + _c(
-            r"\b(?:password|passwd|pwd|secret|token|api[_-]?key)\s*[:=：]\s*['\"]?[^\s'\"]{6,}",
+            r"\b(?:password|passwd|pwd|secret|token|api[_-]?key)\s*[:=：]\s*['\"]?[A-Za-z0-9+/=_.!@#$%^&*~-]{6,}",
             flags=re.IGNORECASE,
         ),
     ),
@@ -69,7 +74,7 @@ RULES: tuple[Rule, ...] = (
         "attack-procedure",
         "弱点や攻め方の手順",
         _c(
-            r"(?:攻撃|悪用|侵入|突破|回避|バイパス)(?:の)?(?:手順|方法|やり方)",
+            r"(?:攻撃|悪用|侵入|突破|バイパス)(?:の)?(?:手順|方法|やり方)",
             r"\b(?:exploit|proof[- ]of[- ]concept|PoC)\b.*\b(?:steps?|payload|reproduce)\b",
             r"\b(?:sql ?injection|xss|ssrf|rce)\b.*\b(?:payload|steps?|bypass)\b",
             flags=re.IGNORECASE,
@@ -80,7 +85,7 @@ RULES: tuple[Rule, ...] = (
         "データベースの名前とID",
         _c(
             r"\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|mssql|sqlserver)://\S+",
-            r"\b(?:db|database|データベース)[ _-]?(?:name|id|名|ID)\s*[:=：]\s*\S+",
+            r"(?:\b(?:db|database)|データベース)[ _-]?(?:name|id|名)\s*[:=：]\s*\S+",
             flags=re.IGNORECASE,
         ),
     ),

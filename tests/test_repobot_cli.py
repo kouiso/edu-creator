@@ -7,7 +7,11 @@ GitHub には繋がず、偽の API（FakeGitHub）で呼び出しを記録し�
 
 import json
 import sys
+import threading
+import urllib.parse
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 import yaml
@@ -17,7 +21,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from repobot import __main__ as cli  # noqa: E402
 from repobot import triage  # noqa: E402
-from repobot.api import GitHubError, upsert_comment  # noqa: E402
+from repobot.api import GitHub, GitHubError, ensure_labels, upsert_comment  # noqa: E402
 
 REPO = "owner/repo"
 FAKE_MAIL = "taro.yamada" + "@gmail.com"
@@ -26,11 +30,12 @@ FAKE_MAIL = "taro.yamada" + "@gmail.com"
 class FakeGitHub:
     """呼ばれた API を記録する偽物。fail に (method, path の一部) を入れるとその呼び出しで失敗する。"""
 
-    def __init__(self, comments=None, files=None, fail=()):
+    def __init__(self, comments=None, files=None, fail=(), missing_labels=()):
         self.repo = REPO
         self.comments = comments or []
         self.files = files or []
         self.fail = fail
+        self.missing_labels = set(missing_labels)
         self.calls = []
 
     def request(self, method, path, body=None):
@@ -38,6 +43,10 @@ class FakeGitHub:
         for m, part in self.fail:
             if m == method and part in path:
                 raise GitHubError(403, path, "forbidden")
+        if method == "GET" and "/labels/" in path:
+            name = urllib.parse.unquote(path.rsplit("/", 1)[1])
+            if name in self.missing_labels:
+                raise GitHubError(404, path, "Not Found")
         return {}
 
     def paginate(self, path):
@@ -254,6 +263,25 @@ def test_triage_assigns_author_and_adds_labels():
     ]
 
 
+def test_triage_creates_missing_labels_before_adding():
+    gh = FakeGitHub(files=[{"filename": "a.md"}], missing_labels={"feature"})
+    cli.run_triage("pull_request_target", pr_event("", ref="feat/x"), gh, {})
+    assert gh.writes() == [
+        ("POST", f"/repos/{REPO}/issues/9/assignees", {"assignees": ["alice"]}),
+        ("POST", f"/repos/{REPO}/labels", {"name": "feature", "color": "ededed"}),
+        ("POST", f"/repos/{REPO}/issues/9/labels", {"labels": ["feature", "documentation"]}),
+    ]
+
+
+def test_ensure_labels_quotes_names_and_reraises_other_errors():
+    gh = FakeGitHub(missing_labels={"good first"})
+    assert ensure_labels(gh, ["good first", "bug"]) == ["good first"]
+    assert ("GET", f"/repos/{REPO}/labels/good%20first", None) in gh.calls
+    broken = FakeGitHub(fail=[("GET", "/labels/")])
+    with pytest.raises(GitHubError):
+        ensure_labels(broken, ["x"])
+
+
 def test_triage_skips_bot_assignment_but_labels():
     gh = FakeGitHub(files=[{"filename": "pyproject.toml"}])
     cli.run_triage(
@@ -445,3 +473,58 @@ def test_issue_form_requires_the_five_sections():
     fields = [b for b in tpl["body"] if b["type"] == "textarea"]
     assert [b["attributes"]["label"] for b in fields] == list(cli.form.ISSUE_SECTIONS)
     assert all(b["validations"]["required"] for b in fields)
+
+
+# ---- 本物の HTTP クライアント（手元の偽サーバに向ける） ----
+
+
+class _Handler(BaseHTTPRequestHandler):
+    seen: ClassVar[list] = []
+
+    def log_message(self, *args):
+        pass
+
+    def _reply(self, status, payload):
+        raw = json.dumps(payload).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def do_GET(self):
+        _Handler.seen.append(("GET", self.path, self.headers.get("Authorization")))
+        if self.path.startswith("/items"):
+            page = int(urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)["page"][0])
+            self._reply(200, list(range(100)) if page == 1 else [100, 101])
+        else:
+            self._reply(404, {"message": "Not Found"})
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        body = json.loads(self.rfile.read(length))
+        _Handler.seen.append(("POST", self.path, body, self.headers.get("Content-Type")))
+        self._reply(201, {"ok": True})
+
+
+@pytest.fixture
+def server():
+    _Handler.seen = []
+    srv = HTTPServer(("127.0.0.1", 0), _Handler)
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    yield f"http://127.0.0.1:{srv.server_port}"
+    srv.shutdown()
+
+
+def test_github_client_paginates_posts_and_raises(server, monkeypatch):
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    monkeypatch.setenv("no_proxy", "127.0.0.1")
+    gh = GitHub("tok", REPO, base=server)
+    assert gh.paginate("/items") == [*range(100), 100, 101]
+    assert gh.request("POST", "/things", {"a": 1}) == {"ok": True}
+    with pytest.raises(GitHubError) as e:
+        gh.request("GET", "/missing")
+    assert e.value.status == 404
+    assert ("GET", "/items?per_page=100&page=1", "Bearer tok") in _Handler.seen
+    assert ("POST", "/things", {"a": 1}, "application/json") in _Handler.seen

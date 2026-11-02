@@ -209,3 +209,14 @@ def test_subheading_only_or_empty_number_is_not_content():
 def test_relation_accepts_issue_url():
     body = GOOD_PR.replace("Closes #12", "Closes https://github.com/kouiso/edu-creator/issues/6")
     assert form.check_pr(body) == []
+
+
+def test_form_fence_pairing_matches_heading_fix():
+    # ```` で囲んだ中の ``` や ~~~ では外に出ない。中の見出しは数えない
+    body = GOOD_ISSUE.replace("## 今どこまで\nなし\n", "````\n```\n## 今どこまで\nなし\n````\n")
+    assert form.check_issue(body) == ["「今どこまで」の見出しがありません"]
+
+
+def test_duplicate_headings_keep_line_breaks():
+    secs = form.sections("## 背景\na\n## 背景\nb")
+    assert secs["背景"] == "a\nb"

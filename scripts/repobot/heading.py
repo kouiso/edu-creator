@@ -11,7 +11,7 @@ _DEEP = re.compile(r"^( {0,3})(#{3,4})(?=[ \t])")
 _SHALLOW = re.compile(r"^ {0,3}#{1,2}(?=[ \t])")
 
 
-def _outside_code(lines: list[str]) -> list[bool]:
+def outside_code(lines: list[str]) -> list[bool]:
     """各行がコードブロックの外か。閉じるのは開いた時と同じ記号で同じ長さ以上の区切りだけ。"""
     flags = []
     fence = ""
@@ -36,7 +36,7 @@ def fix(body: str | None) -> str:
     コードブロックの中は触らない。
     """
     lines = (body or "").splitlines(keepends=True)
-    outside = _outside_code(lines)
+    outside = outside_code(lines)
     if any(o and _SHALLOW.match(line) for line, o in zip(lines, outside, strict=True)):
         return body or ""
     out = [

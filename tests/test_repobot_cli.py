@@ -195,6 +195,14 @@ def test_outsider_comment_with_marker_is_never_edited():
     assert (method, path) == ("POST", f"/repos/{REPO}/issues/5/comments")
 
 
+def test_content_skips_other_bots_but_not_people():
+    gh = FakeGitHub()
+    dep = pr_event(f"release notes by {FAKE_MAIL}", login="dependabot[bot]")
+    assert cli.run_content("pull_request_target", dep, gh, {}) == 0
+    assert gh.calls == []
+    assert cli.run_content("pull_request_target", pr_event(FAKE_MAIL), gh, {}) == 1
+
+
 def test_content_scans_review_bodies():
     gh = FakeGitHub()
     event = {
@@ -515,14 +523,55 @@ def test_dependabot_config_matches_the_issue():
         }
 
 
-def test_auto_merge_only_for_grouped_minor_patch():
+def test_auto_merge_waits_for_ci_and_only_grouped_minor_patch():
     wf = load("dependabot-auto-merge.yml")
-    job = wf["jobs"]["auto-merge"]
-    assert job["if"] == "github.event.pull_request.user.login == 'dependabot[bot]'"
-    merge = job["steps"][1]
-    assert "dependency-group == 'minor-patch'" in merge["if"]
-    assert "semver-major" in merge["if"]
-    assert "${{" not in merge["run"]
+    # CI が終わってから動く（必須の検査が無いリポでも、CI の前にマージされない）
+    assert wf[True] == {"workflow_run": {"workflows": ["CI"], "types": ["completed"]}}
+    job = wf["jobs"]["merge"]
+    for cond in (
+        "github.event.workflow_run.conclusion == 'success'",
+        "github.event.workflow_run.actor.login == 'dependabot[bot]'",
+        "github.event.workflow_run.event == 'pull_request'",
+        "head_repository.full_name == github.repository",
+    ):
+        assert cond in job["if"]
+    [step] = job["steps"]
+    assert "uses" not in step  # PR のコードを取り出さない
+    run = step["run"]
+    assert "${{" not in run
+    assert "dependabot/uv/minor-patch-*) ;;" in run
+    assert '--match-head-commit "$SHA"' in run
+
+
+def test_auto_merge_branch_filter_behaviour(tmp_path):
+    import subprocess
+
+    run = load("dependabot-auto-merge.yml")["jobs"]["merge"]["steps"][0]["run"]
+    fake = tmp_path / "gh"
+    fake.write_text(
+        '#!/bin/sh\necho "gh $*" >> "$LOG"\n[ "$1" = pr ] && [ "$2" = list ] && echo 12\nexit 0\n'
+    )
+    fake.chmod(0o755)
+    log = tmp_path / "log"
+
+    def go(branch):
+        log.write_text("")
+        env = {
+            "PATH": f"{tmp_path}:/usr/bin:/bin",
+            "LOG": str(log),
+            "REPO": REPO,
+            "BRANCH": branch,
+            "SHA": "abc",
+        }
+        res = subprocess.run(["bash", "-e", "-c", run], env=env, capture_output=True, text=True)
+        assert res.returncode == 0, res.stderr
+        return log.read_text()
+
+    merged = go("dependabot/uv/minor-patch-1a2b3c")
+    assert "gh pr merge 12 --repo owner/repo --squash --match-head-commit abc" in merged
+    # 安全性の更新・major の個別 PR はまとめ PR ではないので、何も呼ばない
+    assert go("dependabot/uv/requests-2.32.4") == ""
+    assert go("dependabot/uv/minor-patch") == ""
 
 
 def test_issue_form_requires_the_five_sections():

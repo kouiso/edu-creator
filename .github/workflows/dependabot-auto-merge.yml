@@ -1,32 +1,42 @@
 name: Dependabot auto-merge
 
-# 月1回の「軽い更新（minor・patch）をまとめた PR」だけを自動マージの対象にする。
-# 大きい更新（major）と安全性の更新（まとめ PR に入らない）は手動。
-# 自動マージは必須の検査が通ってから行われる（GitHub の auto-merge）。
-on: pull_request
+# 月1回の「軽い更新（minor・patch）をまとめた PR」だけを、CI が通った後にマージする。
+# 大きい更新（major）と安全性の更新はまとめ PR に入らない（dependabot.yml の groups）ので手動。
+# develop には必須の検査が無いので、GitHub の auto-merge に任せると CI の前にマージされうる。
+# そこで CI の完了（workflow_run）を待ち、成功した時だけ、CI が見たのと同じ commit をマージする。
+# PR のコードは取り出さず、実行もしない。
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  auto-merge:
-    if: github.event.pull_request.user.login == 'dependabot[bot]'
+  merge:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Read update metadata
-        id: metadata
-        uses: dependabot/fetch-metadata@v2.2.0
-        with:
-          github-token: ${{ github.token }}
-
-      - name: Enable auto-merge for grouped minor/patch updates
-        if: steps.metadata.outputs.dependency-group == 'minor-patch' && steps.metadata.outputs.update-type != 'version-update:semver-major'
+      # まとめ PR のブランチ名は dependabot/uv/minor-patch-<番号>（groups の名前が入る）
+      - name: Merge grouped minor/patch update
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          if ! gh pr merge --auto --squash "$PR_URL"; then
-            echo "::warning::自動マージを有効にできませんでした。リポ設定の Allow auto-merge が無効の可能性があります（手動でマージしてください）"
-          fi
+          case "$BRANCH" in
+            dependabot/uv/minor-patch-*) ;;
+            *) echo "まとめ PR ではないので手動: $BRANCH"; exit 0 ;;
+          esac
+          pr="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number,author --jq '.[] | select(.author.login == "app/dependabot" or .author.login == "dependabot[bot]") | .number')"
+          if [ -z "$pr" ]; then echo "開いている Dependabot の PR がありません"; exit 0; fi
+          # CI が通った commit から変わっていたら（あとから push されたら）マージしない
+          gh pr merge "$pr" --repo "$REPO" --squash --match-head-commit "$SHA"

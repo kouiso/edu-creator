@@ -10,23 +10,18 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+import subprocess
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+from pathlib import Path
 
 TITLE = "題"
+HIDDEN = "非表示"
 
-
-@dataclass(frozen=True)
-class Rule:
-    rule_id: str
-    label: str
-    patterns: tuple[re.Pattern[str], ...]
-    # 同じ行に揃って現れないと当たりにしない組み（例: 会社名と金額）
-    requires: tuple[re.Pattern[str], ...] = field(default_factory=tuple)
-
-    def matches(self, line: str) -> int:
-        if any(not r.search(line) for r in self.requires):
-            return 0
-        return sum(len(p.findall(line)) for p in self.patterns)
+# とても長い1行は、重ねながら区切って見る（悪意のある長い行で検査を何分も止めないため）。
+# 重ねる幅より長い1つの当たり（鍵など）は無いので、区切り目にまたがっても見逃さない
+CHUNK = 1000
+OVERLAP = 200
 
 
 def _c(*patterns: str, flags: int = 0) -> tuple[re.Pattern[str], ...]:
@@ -35,54 +30,183 @@ def _c(*patterns: str, flags: int = 0) -> tuple[re.Pattern[str], ...]:
     return tuple(re.compile(p, flags | re.ASCII) for p in patterns)
 
 
-# GitHub が workflow へ自動で渡す、公開して問題の無い名前
-_PUBLIC_SECRET_NAMES = {"GITHUB_TOKEN", "GH_TOKEN", "ACTIONS_RUNTIME_TOKEN"}
+# ---- 秘密の名前 ----
+
+# 下線を含む名前だけ（「TOKEN 数」のような普通の言葉は拾わない）
 _SECRET_NAME = re.compile(
-    r"\b(?:[A-Z][A-Z0-9_]*_)?(?:SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|APIKEY|PRIVATE_KEY|ACCESS_KEY)(?:_[A-Z0-9_]*)?\b",
+    r"\b(?:[A-Z][A-Z0-9]*_)*(?:SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|APIKEY|PRIVATE_KEY|ACCESS_KEY)"
+    r"(?:_[A-Z0-9]+)*\b",
     re.ASCII,
 )
+# GitHub が workflow へ自動で渡す、公開して問題の無い名前
+_ALWAYS_PUBLIC_NAMES = frozenset({"GITHUB_TOKEN", "GH_TOKEN", "ACTIONS_RUNTIME_TOKEN"})
+_TEXT_SUFFIXES = {
+    ".py",
+    ".md",
+    ".yml",
+    ".yaml",
+    ".toml",
+    ".sh",
+    ".txt",
+    ".json",
+    ".example",
+    ".cfg",
+}
+
+
+def _has_underscore(name: str) -> bool:
+    return "_" in name
+
+
+def public_names(root: str | Path = ".") -> frozenset[str]:
+    """リポに既に公開されている秘密の名前（例: README に書いた環境変数名）。
+
+    名前そのものは既に誰でも読めるので、本文に書いても新しく漏れたことにはならない。
+    """
+    root = Path(root)
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(root), "ls-files"], capture_output=True, text=True, check=True
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return _ALWAYS_PUBLIC_NAMES
+    names = set(_ALWAYS_PUBLIC_NAMES)
+    for rel in out.splitlines():
+        path = root / rel
+        if path.suffix not in _TEXT_SUFFIXES and not path.name.startswith(".env"):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        names.update(m.group(0) for m in _SECRET_NAME.finditer(text))
+    return frozenset(names)
+
+
+# ---- 個人のメールアドレス ----
+
 _EMAIL = re.compile(
-    r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})(?![A-Za-z0-9-])"
+    r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.([A-Za-z]{2,}))"
+    r"(?![A-Za-z0-9-])"
+)
+# 人が使う送り先の末尾（`q@k.transpose` のようなコードの行列積を拾わないため、知っている末尾に限る）
+_MAIL_TLDS = frozenset(
+    [
+        "com",
+        "net",
+        "org",
+        "jp",
+        "io",
+        "co",
+        "me",
+        "dev",
+        "app",
+        "ai",
+        "info",
+        "biz",
+        "edu",
+        "gov",
+        "us",
+        "uk",
+        "de",
+        "fr",
+        "cn",
+        "kr",
+        "tw",
+        "hk",
+        "sg",
+        "au",
+        "ca",
+        "in",
+        "nl",
+        "se",
+        "ch",
+        "it",
+        "es",
+        "br",
+        "ru",
+        "mobi",
+        "name",
+        "xyz",
+        "cloud",
+        "tech",
+        "email",
+        "mail",
+    ]
 )
 # 個人に届かない送り先（GitHub の noreply、文書用の例示ドメイン、git の接続先 git@ホスト）
-_NON_PERSONAL_LOCAL = re.compile(r"^(?:git|no-?reply)$", re.IGNORECASE)
 _NON_PERSONAL_DOMAIN = re.compile(
-    r"(?:^|\.)(?:users\.noreply\.github\.com|noreply\.github\.com|example\.(?:com|org|net)|example)$",
+    r"(?:^|\.)(?:users\.noreply\.github\.com|noreply\.github\.com)$|(?:^|\.)example(?:\.|$)",
     re.IGNORECASE,
 )
+_NON_PERSONAL_LOCAL = re.compile(r"^(?:git|no-?reply)$", re.IGNORECASE)
+
+
+# ---- 規則 ----
+
+
+@dataclass(frozen=True)
+class Rule:
+    rule_id: str
+    label: str
+    patterns: tuple[re.Pattern[str], ...] = ()
+    # 同じ行に揃って現れないと当たりにしない組み（例: 会社名と金額）
+    requires: tuple[re.Pattern[str], ...] = ()
+
+    def starts(self, text: str, public: frozenset[str]) -> list[int]:
+        """当たった位置（文字の番号）。"""
+        if self.rule_id == "secret-name":
+            return [
+                m.start()
+                for m in _SECRET_NAME.finditer(text)
+                if _has_underscore(m.group(0)) and m.group(0) not in public
+            ]
+        if self.rule_id == "personal-email":
+            return [
+                m.start()
+                for m in _EMAIL.finditer(text)
+                if m.group(2).lower() in _MAIL_TLDS
+                and not _NON_PERSONAL_DOMAIN.search(m.group(1))
+                and not _NON_PERSONAL_LOCAL.match(m.group(0).split("@", 1)[0])
+            ]
+        if any(not r.search(text) for r in self.requires):
+            return []
+        return [m.start() for p in self.patterns for m in p.finditer(text)]
+
 
 RULES: tuple[Rule, ...] = (
     Rule(
         "secret-value",
         "秘密の値",
         _c(
-            r"\bAKIA[0-9A-Z]{16}\b",
-            r"\bgh[pousr]_[A-Za-z0-9]{36,}\b",
-            r"\bgithub_pat_[A-Za-z0-9_]{22,}\b",
-            r"\bxox[abprs]-[A-Za-z0-9-]{10,}\b",
+            r"\bAKIA[0-9A-Z]{16}(?![0-9A-Z])",
+            r"\bgh[pousr]_[A-Za-z0-9]{36,}",
+            r"\bgithub_pat_[A-Za-z0-9_]{22,}",
+            r"\bxox[abprs]-[A-Za-z0-9-]{10,}",
             r"-----BEGIN [A-Z ]*PRIVATE KEY-----",
-            r"\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}\b",
-            r"\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}\b",
-            r"\bAIza[0-9A-Za-z_-]{35}\b",
-            r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b",
+            r"\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}",
+            r"\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}",
+            r"\bAIza[0-9A-Za-z_-]{35}",
+            r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}",
         )
         + _c(
-            # 値は英字と数字の両方を含むものだけ（「token: 200000 まで」や「pwd: /home/…」を拾わない）
+            # 値は英字と数字の両方を含むものだけ。版番号（v1.2.3）と場所（/tmp/…）は値と見なさない
             r"(?<![A-Za-z0-9])(?:password|passwd|pwd|secret|token|api[_-]?key|パスワード)\s*[:=：]\s*['\"]?"
+            r"(?!v?\d+(?:\.\d+)+(?![A-Za-z0-9]))(?![/.~])"
             r"(?=[^\s'\"]*[0-9])(?=[^\s'\"]*[A-Za-z])[A-Za-z0-9+/=_.!@#$%^&*~-]{6,}",
             flags=re.IGNORECASE,
         ),
     ),
-    Rule("secret-name", "秘密の名前", ()),  # 下の _secret_names で数える
+    Rule("secret-name", "秘密の名前"),
     Rule(
         "attack-procedure",
         "弱点や攻め方の手順",
         _c(
-            r"(?:攻撃|悪用|侵入|突破|バイパス)(?:の)?(?:手順|方法|やり方)",
-            r"脆弱性.{0,40}(?:手順|再現|ペイロード|悪用)",
-            r"インジェクション.{0,40}(?:ペイロード|手順)",
-            r"\b(?:exploit|proof[- ]of[- ]concept|PoC)\b.{0,40}\b(?:payload|reproduce)\b",
-            r"\b(?:sql ?injection|xss|ssrf|rce)\b.{0,40}\b(?:payload|bypass)\b",
+            r"(?:攻撃|悪用|侵入|突破|バイパス)(?:手順|方法|やり方)",
+            r"脆弱性.{0,20}(?:悪用|ペイロード|攻撃手順|再現手順|手順で(?:再現|悪用))",
+            r"インジェクション.{0,40}ペイロード",
+            r"\b(?:exploit|proof[- ]of[- ]concept|PoC)\b.{0,40}\bpayload\b",
+            r"\b(?:sql ?injection|xss|ssrf|rce)\b.{0,40}\bpayload\b",
             flags=re.IGNORECASE,
         ),
     ),
@@ -90,8 +214,12 @@ RULES: tuple[Rule, ...] = (
         "database",
         "データベースの名前とID",
         _c(
-            r"\b(?:postgres(?:ql)?|mysql|mariadb|mongodb|rediss?|mssql|sqlserver|sqlite)(?:\+[a-z0-9]+)?://\S+",
-            r"(?:\b(?:db|database)|データベース)[ _-]?(?:name|id|名)\s*[:=：]\s*\S+",
+            # 手元の練習用（localhost・127.0.0.1・:memory:）は除く
+            r"\b(?:postgres(?:ql)?|mysql|mariadb|mongodb|rediss?|mssql|sqlserver|sqlite)(?:\+[a-z0-9]+)?://"
+            r"(?!(?:[^@\s/]*@)?(?:localhost|127\.0\.0\.1|\[::1\])(?![A-Za-z0-9.-]))(?!/?:memory:)\S+",
+            # 型の注釈（db_name: str）は値ではない
+            r"(?:\b(?:db|database)|データベース)[ _-]?(?:name|id|名)\s*[:=：]\s*"
+            r"(?!(?:str|int|Optional|None|Any)\b)\S+",
             flags=re.IGNORECASE,
         ),
     ),
@@ -100,31 +228,33 @@ RULES: tuple[Rule, ...] = (
         "顧客の名前と金額",
         _c(r"[¥￥$]\s?\d[\d,]*|\d[\d,.]*\s?(?:円|万円|億円|ドル|USD|JPY)"),
         requires=_c(
-            # 「様」は「仕様」「同様」などを除く
-            r"株式会社|有限会社|合同会社|[(（]株[)）]|㈱|商事|御中|顧客|取引先|社(?:に|へ|から|の|様)|(?<![仕同多模異])様|\bInc\.|\bLtd\.|\bcustomer\b",
+            # 「会社の」「各社の」「この様に」「仕様」などの普通の言葉は除く
+            r"株式会社|有限会社|合同会社|[(（]株[)）]|㈱|商事|御中|顧客|取引先"
+            r"|(?<![会各自他本弊御貴当])社(?:に|へ|から|様)"
+            r"|(?<![仕同多模異こそあどの])様(?![子々])|\bcustomer\b",
             flags=re.IGNORECASE,
         ),
     ),
-    Rule("personal-email", "個人のメールアドレス", ()),  # 下の _personal_emails で数える
+    Rule("personal-email", "個人のメールアドレス"),
 )
 
-MAX_CHUNK = 1000
 FORBIDDEN_ID = "forbidden-word"
 FORBIDDEN_LABEL = "指定の禁止語"
 LABELS = {r.rule_id: r.label for r in RULES} | {FORBIDDEN_ID: FORBIDDEN_LABEL}
 
-
-def _secret_names(line: str) -> int:
-    return sum(1 for m in _SECRET_NAME.finditer(line) if m.group(0) not in _PUBLIC_SECRET_NAMES)
-
-
-def _personal_emails(line: str) -> int:
-    return sum(
-        1
-        for m in _EMAIL.finditer(line)
-        if not _NON_PERSONAL_DOMAIN.search(m.group(1))
-        and not _NON_PERSONAL_LOCAL.match(m.group(0).split("@", 1)[0])
-    )
+# 禁止語の一覧は grep -E 用に書かれている（scripts/guard/check-forbidden.sh と共用）ので、
+# POSIX の文字クラスを Python の書き方へ直してから使う
+_POSIX_CLASSES = {
+    "[:alpha:]": "a-zA-Z",
+    "[:digit:]": "0-9",
+    "[:alnum:]": "a-zA-Z0-9",
+    "[:upper:]": "A-Z",
+    "[:lower:]": "a-z",
+    "[:space:]": r"\s",
+    "[:blank:]": r" \t",
+    "[:punct:]": r"!-/:-@\[-`{-~",
+    "[:xdigit:]": "0-9A-Fa-f",
+}
 
 
 def load_forbidden(raw: str | None) -> tuple[list[re.Pattern[str]], int]:
@@ -135,6 +265,8 @@ def load_forbidden(raw: str | None) -> tuple[list[re.Pattern[str]], int]:
         s = line.strip()
         if not s or s.startswith("#"):
             continue
+        for posix, py in _POSIX_CLASSES.items():
+            s = s.replace(posix, py)
         try:
             patterns.append(re.compile(s, re.IGNORECASE))
         except re.error:
@@ -149,48 +281,70 @@ class Hit:
     count: int
 
 
+def _chunked_starts(text: str, find: Callable[[str], Iterable[int]]) -> set[int]:
+    """長い行を重ねながら区切って探し、当たった位置を行全体の番号でまとめる（重なりの二重数えは消える）。"""
+    found: set[int] = set()
+    step = CHUNK - OVERLAP
+    for j in range(0, max(len(text), 1), step):
+        found.update(j + s for s in find(text[j : j + CHUNK]))
+        if j + CHUNK >= len(text):
+            break
+    return found
+
+
 def scan(
-    title: str | None, body: str | None, forbidden: list[re.Pattern[str]] | None = None
+    title: str | None,
+    body: str | None,
+    forbidden: list[re.Pattern[str]] | None = None,
+    public: frozenset[str] = _ALWAYS_PUBLIC_NAMES,
 ) -> list[Hit]:
     """題と本文を1行ずつ見て、当たった規則・場所・件数を返す（当たった文字は返さない）。"""
     lines: list[tuple[str, str]] = []
     if title:
         lines.append((TITLE, title))
-    for i, line in enumerate((body or "").splitlines(), start=1):
-        # とても長い1行は区切って見る（悪意のある長い行で検査を何分も止めないため）
-        for j in range(0, max(len(line), 1), MAX_CHUNK):
-            lines.append((str(i), line[j : j + MAX_CHUNK]))
+    # 行番号は GitHub の表示と同じく改行（\n）だけで数える
+    for i, line in enumerate((body or "").split("\n"), start=1):
+        lines.append((str(i), line.rstrip("\r")))
+    pats = forbidden or []
     hits: list[Hit] = []
     for place, line in lines:
         for rule in RULES:
-            if rule.rule_id == "secret-name":
-                n = _secret_names(line)
-            elif rule.rule_id == "personal-email":
-                n = _personal_emails(line)
-            else:
-                n = rule.matches(line)
+            n = len(_chunked_starts(line, lambda t, r=rule: r.starts(t, public)))
             if n:
                 hits.append(Hit(rule.rule_id, place, n))
-        n = sum(len(p.findall(line)) for p in forbidden or [])
+        n = len(_chunked_starts(line, lambda t: [m.start() for p in pats for m in p.finditer(t)]))
         if n:
             hits.append(Hit(FORBIDDEN_ID, place, n))
     return hits
 
 
 def summarize(hits: list[Hit]) -> list[tuple[str, list[str], int]]:
-    """規則ごとに (規則名, 場所の一覧, 件数合計) へまとめる。規則の並びは定義順。"""
+    """規則ごとに (規則名, 場所の一覧, 件数合計) へまとめる。規則の並びは定義順。
+
+    禁止語の場所は出さない。出すと、書き換えを繰り返して非公開の一覧を当てられてしまうため。
+    """
     order = [r.rule_id for r in RULES] + [FORBIDDEN_ID]
     out = []
     for rule_id in order:
         mine = [h for h in hits if h.rule_id == rule_id]
         if mine:
-            places = list(dict.fromkeys(h.place for h in mine))
+            if rule_id == FORBIDDEN_ID:
+                places = [HIDDEN]
+            else:
+                places = list(dict.fromkeys(h.place for h in mine))
             out.append((LABELS[rule_id], places, sum(h.count for h in mine)))
     return out
 
 
 def _place_text(places: list[str]) -> str:
-    return "、".join("題" if p == TITLE else f"{p}行目" for p in places)
+    def one(p: str) -> str:
+        if p == TITLE:
+            return "題"
+        if p == HIDDEN:
+            return "（非表示）"
+        return f"{p}行目"
+
+    return "、".join(one(p) for p in places)
 
 
 def report(target: str, hits: list[Hit]) -> str:

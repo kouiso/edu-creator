@@ -1,5 +1,5 @@
 # 日本語の全角記号（（）、：など）は意図した表記なので、紛らわしい文字の警告は外す
-# ruff: noqa: RUF002, RUF003
+# ruff: noqa: RUF001, RUF002, RUF003
 """公開内容チェック（scripts/repobot/content.py）のテスト。
 
 秘密らしい値はテスト用の作り物で、gitleaks や禁止語検査に当たらないよう実行時に組み立てる。
@@ -123,6 +123,20 @@ def test_forbidden_words_from_secret_list():
     assert [(h.rule_id, h.count) for h in hits] == [("forbidden-word", 2)]
 
 
+def test_forbidden_list_accepts_grep_posix_classes():
+    patterns, broken = content.load_forbidden("bar[[:digit:]]+\nbaz[[:space:]]qux")
+    assert broken == 0
+    hits = content.scan(None, "bar42 と baz qux", patterns)
+    assert [(h.rule_id, h.count) for h in hits] == [("forbidden-word", 2)]
+
+
+def test_forbidden_word_place_is_hidden_so_the_list_cannot_be_probed():
+    patterns, _ = content.load_forbidden("projectx")
+    text = content.report("この issue", content.scan(None, "a\nb\nProjectX", patterns))
+    assert "| 指定の禁止語 | （非表示） | 1 |" in text
+    assert "3行目" not in text
+
+
 def test_load_forbidden_handles_none_and_empty():
     assert content.load_forbidden(None) == ([], 0)
     assert content.load_forbidden("") == ([], 0)
@@ -215,3 +229,64 @@ def test_very_long_line_is_scanned_quickly_and_still_caught():
     hits = content.scan(None, line)
     assert time.monotonic() - start < 5
     assert "secret-value" in ids(hits)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "OPENAI_API_KEYが設定されていません",
+        "TOKEN 数が上限",
+        "各社の API 料金は $3〜$15",
+        "会社の予算で $20",
+        "この様に $5 かかる",
+        "scores = q@k.transpose(-2, -1)",
+        "x@self.weight.T",
+        "pkg@git.example.dev",
+        "脆弱性を再現するテストを追加",
+        "脆弱性の報告手順は SECURITY.md",
+        "XSS bypass を防ぐため escape",
+        "PoC で reproduce できた",
+        "pwd: /tmp/out1",
+        "secret: v1.2.3",
+        "token: v2.0.1",
+        "db_name: str",
+        "sqlite:///:memory:",
+        "redis://localhost:6379",
+        "postgres://user:pw@127.0.0.1:5432/app",
+    ],
+)
+def test_ordinary_repo_text_stays_green(line):
+    public = frozenset({"OPENAI_API_KEY"})
+    assert content.scan(None, line, public=public) == []
+
+
+def test_public_names_come_from_tracked_files(tmp_path):
+    import subprocess
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "README.md").write_text("OPENAI_API_KEY と HF_TOKEN を設定", encoding="utf-8")
+    (tmp_path / "bin.dat").write_bytes(b"STRIPE_SECRET_KEY")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "."], check=True)
+    names = content.public_names(tmp_path)
+    assert {"OPENAI_API_KEY", "HF_TOKEN", "GITHUB_TOKEN"} <= names
+    assert "STRIPE_SECRET_KEY" not in names  # 文字のファイル以外は見ない
+    assert content.scan(None, "HF_TOKEN を入れる", public=names) == []
+    assert ids(content.scan(None, "NEW_SERVICE_TOKEN を入れる", public=names)) == ["secret-name"]
+
+
+def test_public_names_outside_git_falls_back(tmp_path):
+    assert content.public_names(tmp_path / "missing") == frozenset(
+        {"GITHUB_TOKEN", "GH_TOKEN", "ACTIONS_RUNTIME_TOKEN"}
+    )
+
+
+@pytest.mark.parametrize("offset", [0, 790, 799, 800, 990, 995, 999, 1000, 1601, 2500])
+def test_key_across_chunk_boundary_is_found_once(offset):
+    line = "x " * (offset // 2) + ("x" if offset % 2 else "") + " " + FAKE_AWS + " end"
+    hits = content.scan(None, line)
+    assert [(h.rule_id, h.count) for h in hits] == [("secret-value", 1)]
+
+
+def test_line_numbers_follow_github_newlines_only():
+    body = "a\u2028b\x0cc\n" + FAKE_AWS + "\r\nend"
+    assert [h.place for h in content.scan(None, body)] == ["2"]

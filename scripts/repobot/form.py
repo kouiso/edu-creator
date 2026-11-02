@@ -8,6 +8,7 @@ import re
 from typing import Any
 
 from repobot.api import is_bot
+from repobot.heading import outside_code
 
 ISSUE_SECTIONS = ("背景", "今どこまで", "次にやること", "誰の判断待ち", "完了条件")
 
@@ -25,7 +26,6 @@ RELATION = re.compile(
 )
 
 _HEADING = re.compile(r"^ {0,3}(#{1,6})\s+(.+?)\s*#*\s*$")
-_FENCE = re.compile(r"^ {0,3}(```|~~~)")
 _COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _NOTE = re.compile(r"[（(](?:必須|任意)[）)]")
 # 中身として数えない行: 箇条書きの印だけ、空のチェックボックス、フォームが入れる「回答なし」
@@ -45,12 +45,8 @@ def sections(body: str | None) -> dict[str, str]:
     """見出し（正規化済み）→ その下の中身。中身は同じか浅い見出しの手前まで。コードブロック内は見出しにしない。"""
     lines = _COMMENT.sub("", body or "").splitlines()
     heads: list[tuple[int, int, str]] = []  # (行, 深さ, 見出し)
-    fenced = False
-    for i, line in enumerate(lines):
-        if _FENCE.match(line):
-            fenced = not fenced
-            continue
-        m = None if fenced else _HEADING.match(line)
+    for i, (line, outside) in enumerate(zip(lines, outside_code(lines), strict=True)):
+        m = _HEADING.match(line) if outside else None
         if m:
             heads.append((i, len(m.group(1)), normalize(m.group(2))))
     out: dict[str, str] = {}
@@ -61,7 +57,7 @@ def sections(body: str | None) -> dict[str, str]:
                 end = j
                 break
         text = "\n".join(lines[i + 1 : end])
-        out[name] = out.get(name, "") + text
+        out[name] = f"{out[name]}\n{text}" if name in out else text
     return out
 
 

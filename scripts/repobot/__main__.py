@@ -99,12 +99,18 @@ def run_content(event_name: str, event: dict[str, Any], client: Any, env: dict[s
         # この自動化自身の報告。中身は規則名と行番号だけなので検査しない
         _log("この自動化自身のコメントなので検査しない")
         return 0
+    if is_bot(author):
+        # ボット（Dependabot のリリースノート、レビューボットの引用など）は、上流や既存の公開物の写し。
+        # 毎回赤と「要確認」の公開コメントが付くと人の書いた物の警告が埋もれるので見ない
+        _log(f"ボットが書いたものなので検査しない: {author.get('login')}")
+        return 0
     forbidden, broken = content.load_forbidden(env.get("REPOBOT_FORBIDDEN_PATTERNS"))
     if broken:
         _log(f"::warning::禁止語の一覧のうち {broken} 行が正規表現として読めず、使っていません")
     if not env.get("REPOBOT_FORBIDDEN_PATTERNS"):
         _log("::notice::禁止語の一覧（secret）が渡されていないため、汎用の規則だけで検査します")
-    hits = content.scan(title, body, forbidden)
+    public = content.public_names(env.get("GITHUB_WORKSPACE", "."))
+    hits = content.scan(title, body, forbidden, public)
     marker = CONTENT_MARKER.format(key=key)
     try:
         # 当たりが無い時は新しく投稿しない。前に「要確認」を出していれば OK に書き換える

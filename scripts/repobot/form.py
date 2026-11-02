@@ -1,3 +1,5 @@
+# 日本語の全角記号（（）、：など）は意図した表記なので、紛らわしい文字の警告は外す
+# ruff: noqa: RUF001, RUF002, RUF003
 """issue と PR の書き方チェック。見出しがあり、中身が書いてあるかを文字の規則だけで見る。"""
 
 from __future__ import annotations
@@ -17,7 +19,8 @@ PR_SECTIONS: dict[str, tuple[str, ...]] = {
 }
 
 RELATION = re.compile(
-    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?)\b\s*:?\s*(?:[\w.-]+/[\w.-]+)?#\d+", re.IGNORECASE
+    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?)\b\s*:?\s*(?:[\w.-]+/[\w.-]+)?#\d+",
+    re.IGNORECASE,
 )
 
 _HEADING = re.compile(r"^ {0,3}(#{1,6})\s+(.+?)\s*#*\s*$")
@@ -126,7 +129,11 @@ def report(kind: str, missing: list[str]) -> str:
     if not missing:
         return f"**書き方チェック: OK**\n\nこの{kind}の書き方はそろっています。"
     items = "\n".join(f"- {m}" for m in missing)
-    need = "背景 / 今どこまで / 次にやること / 誰の判断待ち / 完了条件" if kind == "issue" else "概要 / 変更内容 / 関連Issue"
+    need = (
+        "背景 / 今どこまで / 次にやること / 誰の判断待ち / 完了条件"
+        if kind == "issue"
+        else "概要 / 変更内容 / 関連Issue"
+    )
     return (
         f"**書き方チェック: 足りない所があります**\n\n{items}\n\n"
         f"必要な見出し: {need}。見出しだけ、または「-」やコメントだけの場合は未記入として扱います。"

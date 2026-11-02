@@ -1,3 +1,5 @@
+# 日本語の全角記号（（）、：など）は意図した表記なので、紛らわしい文字の警告は外す
+# ruff: noqa: RUF002, RUF003
 """repobot の入口（イベント → API 呼び出し・終了コード）と workflow 定義のテスト。
 
 GitHub には繋がず、偽の API（FakeGitHub）で呼び出しを記録して確かめる。
@@ -117,7 +119,10 @@ def test_content_fixed_updates_previous_comment_to_ok():
         ),
         (
             "pull_request_review_comment",
-            {"pull_request": {"number": 9}, "comment": {"id": 42, "body": FAKE_MAIL, "html_url": "u"}},
+            {
+                "pull_request": {"number": 9},
+                "comment": {"id": 42, "body": FAKE_MAIL, "html_url": "u"},
+            },
             9,
             "review-comment-42",
         ),
@@ -127,7 +132,7 @@ def test_content_fixed_updates_previous_comment_to_ok():
 def test_content_covers_comments_reviews_and_prs(event_name, event, number, marker):
     gh = FakeGitHub()
     assert cli.run_content(event_name, event, gh, {}) == 1
-    [(method, path, body)] = gh.writes()
+    [(_method, path, body)] = gh.writes()
     assert path == f"/repos/{REPO}/issues/{number}/comments"
     assert f"<!-- repobot:public-content:{marker} -->" in body["body"]
 
@@ -141,7 +146,10 @@ def test_content_uses_forbidden_list_from_env():
 
 def test_content_skips_own_comments():
     gh = FakeGitHub()
-    event = {"issue": {"number": 3}, "comment": {"id": 1, "body": "<!-- repobot:format -->\nx " + FAKE_MAIL}}
+    event = {
+        "issue": {"number": 3},
+        "comment": {"id": 1, "body": "<!-- repobot:format -->\nx " + FAKE_MAIL},
+    }
     assert cli.run_content("issue_comment", event, gh, {}) == 0
     assert gh.calls == []
 
@@ -157,7 +165,9 @@ def test_content_ignores_other_events():
 
 # ---- 書き方チェック ----
 
-GOOD_ISSUE = "## 背景\na\n## 今どこまで\nb\n## 次にやること\nc\n## 誰の判断待ち\nd\n## 完了条件\n- [ ] e\n"
+GOOD_ISSUE = (
+    "## 背景\na\n## 今どこまで\nb\n## 次にやること\nc\n## 誰の判断待ち\nd\n## 完了条件\n- [ ] e\n"
+)
 
 
 def test_form_red_then_green_updates_the_same_comment():
@@ -230,29 +240,43 @@ def test_heading_patches_only_when_changed():
 
 
 def test_triage_assigns_author_and_adds_labels():
-    gh = FakeGitHub(files=[{"filename": "README.md"}, {"filename": "uv.lock"}, {"filename": "core/a.py"}])
+    gh = FakeGitHub(
+        files=[{"filename": "README.md"}, {"filename": "uv.lock"}, {"filename": "core/a.py"}]
+    )
     assert cli.run_triage("pull_request_target", pr_event("", ref="fix/bug"), gh, {}) == 0
     assert gh.writes() == [
         ("POST", f"/repos/{REPO}/issues/9/assignees", {"assignees": ["alice"]}),
-        ("POST", f"/repos/{REPO}/issues/9/labels", {"labels": ["bugfix", "documentation", "dependencies"]}),
+        (
+            "POST",
+            f"/repos/{REPO}/issues/9/labels",
+            {"labels": ["bugfix", "documentation", "dependencies"]},
+        ),
     ]
 
 
 def test_triage_skips_bot_assignment_but_labels():
     gh = FakeGitHub(files=[{"filename": "pyproject.toml"}])
-    cli.run_triage("pull_request_target", pr_event("", ref="dependabot/uv/x", login="dependabot[bot]"), gh, {})
+    cli.run_triage(
+        "pull_request_target", pr_event("", ref="dependabot/uv/x", login="dependabot[bot]"), gh, {}
+    )
     assert gh.writes() == [("POST", f"/repos/{REPO}/issues/9/labels", {"labels": ["dependencies"]})]
 
 
 def test_triage_continues_when_assignment_fails():
     gh = FakeGitHub(files=[{"filename": "tests/test_a.py"}], fail=[("POST", "/assignees")])
     assert cli.run_triage("pull_request_target", pr_event("", ref="chore/x"), gh, {}) == 0
-    assert gh.writes()[-1] == ("POST", f"/repos/{REPO}/issues/9/labels", {"labels": ["chore", "test"]})
+    assert gh.writes()[-1] == (
+        "POST",
+        f"/repos/{REPO}/issues/9/labels",
+        {"labels": ["chore", "test"]},
+    )
 
 
 def test_triage_synchronize_does_not_reassign_and_no_labels_means_no_call():
     gh = FakeGitHub(files=[{"filename": "core/a.py"}])
-    cli.run_triage("pull_request_target", pr_event("", action="synchronize", ref="claude/x"), gh, {})
+    cli.run_triage(
+        "pull_request_target", pr_event("", action="synchronize", ref="claude/x"), gh, {}
+    )
     assert gh.writes() == []
 
 
@@ -279,7 +303,13 @@ def test_branch_label(branch, label):
 
 
 def test_path_labels_follow_repo_layout():
-    paths = ["docs/a.md", "config/x.yaml", ".github/workflows/ci.yml", "test_integration.py", ".mise.toml"]
+    paths = [
+        "docs/a.md",
+        "config/x.yaml",
+        ".github/workflows/ci.yml",
+        "test_integration.py",
+        ".mise.toml",
+    ]
     assert triage.path_labels(paths) == ["documentation", "dependencies", "config", "ci", "test"]
     assert triage.labels_for("docs/x", ["a.md"]) == ["documentation"]
 
@@ -322,7 +352,9 @@ def test_module_runs_as_script(tmp_path):
         "PYTHONPATH": str(ROOT / "scripts"),
         "PATH": "/usr/bin:/bin",
     }
-    res = subprocess.run([sys.executable, "-m", "repobot", "content"], env=env, capture_output=True, text=True)
+    res = subprocess.run(
+        [sys.executable, "-m", "repobot", "content"], env=env, capture_output=True, text=True
+    )
     assert res.returncode == 0, res.stderr
 
 
@@ -375,7 +407,11 @@ def test_workflow_triggers_cover_the_issue_scope():
     }
     assert set(on("issue-pr-format-check.yml")) == {"issues", "pull_request_target"}
     assert on("issue-heading-fix.yml") == {"issues": {"types": ["opened"]}}
-    assert set(on("pr-triage.yml")["pull_request_target"]["types"]) == {"opened", "reopened", "synchronize"}
+    assert set(on("pr-triage.yml")["pull_request_target"]["types"]) == {
+        "opened",
+        "reopened",
+        "synchronize",
+    }
 
 
 def test_dependabot_config_matches_the_issue():
@@ -387,7 +423,10 @@ def test_dependabot_config_matches_the_issue():
         assert u["schedule"] == {"interval": "monthly", "time": "09:00", "timezone": "Asia/Tokyo"}
         assert u["cooldown"] == {"default-days": 3}
         assert u["open-pull-requests-limit"] == 2
-        assert u["groups"]["minor-patch"] == {"applies-to": "version-updates", "update-types": ["minor", "patch"]}
+        assert u["groups"]["minor-patch"] == {
+            "applies-to": "version-updates",
+            "update-types": ["minor", "patch"],
+        }
 
 
 def test_auto_merge_only_for_grouped_minor_patch():

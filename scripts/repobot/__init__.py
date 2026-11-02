@@ -1,3 +1,5 @@
+# 日本語の全角記号（（）、：など）は意図した表記なので、紛らわしい文字の警告は外す
+# ruff: noqa: RUF002, RUF003
 """issue・PR・コメント向けの共通自動化（標準ライブラリだけで動く）。
 
 各サブコマンドは .github/workflows/ の workflow から `python3 -m repobot <コマンド>` で呼ばれる。

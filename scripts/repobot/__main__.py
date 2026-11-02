@@ -1,3 +1,5 @@
+# 日本語の全角記号（（）、：など）は意図した表記なので、紛らわしい文字の警告は外す
+# ruff: noqa: RUF001, RUF002, RUF003
 """workflow からの入口: `PYTHONPATH=scripts python3 -m repobot <content|form|heading|triage>`。
 
 GitHub が渡すイベント（GITHUB_EVENT_NAME / GITHUB_EVENT_PATH）を読む。
@@ -23,18 +25,32 @@ def _log(msg: str) -> None:
     print(msg, file=sys.stderr)
 
 
-def _target(event_name: str, event: dict[str, Any]) -> tuple[int, str, str | None, str | None, str] | None:
+def _target(
+    event_name: str, event: dict[str, Any]
+) -> tuple[int, str, str | None, str | None, str] | None:
     """(issue/PR 番号, 目印の鍵, 題, 本文, 報告で使う呼び名) を返す。対象外なら None。"""
     if event_name == "issues":
         issue = event["issue"]
-        return issue["number"], "body", issue.get("title"), issue.get("body"), "この issue の題か本文"
+        return (
+            issue["number"],
+            "body",
+            issue.get("title"),
+            issue.get("body"),
+            "この issue の題か本文",
+        )
     if event_name in ("pull_request", "pull_request_target"):
         pr = event["pull_request"]
         return pr["number"], "body", pr.get("title"), pr.get("body"), "この PR の題か本文"
     if event_name == "issue_comment":
         c = event["comment"]
         url = c.get("html_url", "")
-        return event["issue"]["number"], f"comment-{c['id']}", None, c.get("body"), f"[このコメント]({url})"
+        return (
+            event["issue"]["number"],
+            f"comment-{c['id']}",
+            None,
+            c.get("body"),
+            f"[このコメント]({url})",
+        )
     if event_name == "pull_request_review_comment":
         c = event["comment"]
         url = c.get("html_url", "")
@@ -66,7 +82,9 @@ def run_content(event_name: str, event: dict[str, Any], client: Any, env: dict[s
     marker = CONTENT_MARKER.format(key=key)
     try:
         # 当たりが無い時は新しく投稿しない。前に「要確認」を出していれば OK に書き換える
-        action = upsert_comment(client, number, marker, content.report(name, hits), create_if_missing=bool(hits))
+        action = upsert_comment(
+            client, number, marker, content.report(name, hits), create_if_missing=bool(hits)
+        )
         _log(f"コメント: {action}")
     except GitHubError as e:
         _log(f"::warning::コメントを書けませんでした（{e.status}）。検査結果は下の通り")
@@ -91,7 +109,9 @@ def run_form(event_name: str, event: dict[str, Any], client: Any, env: dict[str,
         _log(f"検査しない: {reason}")
         return 0
     try:
-        action = upsert_comment(client, item["number"], FORM_MARKER, form.report(kind, missing), bool(missing))
+        action = upsert_comment(
+            client, item["number"], FORM_MARKER, form.report(kind, missing), bool(missing)
+        )
         _log(f"コメント: {action}")
     except GitHubError as e:
         _log(f"::warning::コメントを書けませんでした（{e.status}）")
@@ -122,7 +142,11 @@ def run_triage(event_name: str, event: dict[str, Any], client: Any, env: dict[st
     user = pr.get("user") or {}
     if event.get("action") in ("opened", "reopened") and not is_bot(user):
         try:
-            client.request("POST", f"/repos/{client.repo}/issues/{number}/assignees", {"assignees": [user["login"]]})
+            client.request(
+                "POST",
+                f"/repos/{client.repo}/issues/{number}/assignees",
+                {"assignees": [user["login"]]},
+            )
             _log(f"担当者を {user['login']} にしました")
         except GitHubError as e:
             # 担当者の付け外しに失敗しても、ラベル付けは続ける

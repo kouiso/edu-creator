@@ -1,3 +1,5 @@
+# 日本語の全角記号（（）、：など）は意図した表記なので、紛らわしい文字の警告は外す
+# ruff: noqa: RUF002, RUF003
 """公開内容チェック（scripts/repobot/content.py）のテスト。
 
 秘密らしい値はテスト用の作り物で、gitleaks や禁止語検査に当たらないよう実行時に組み立てる。
@@ -10,7 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from repobot import content  # noqa: E402
+from repobot import content
 
 
 def ids(hits):
@@ -31,7 +33,17 @@ FAKE_ASSIGN = "pass" + "word: " + "zq7" * 3
 
 @pytest.mark.parametrize(
     "line",
-    [FAKE_AWS, FAKE_GH, FAKE_PAT, FAKE_SLACK, FAKE_PEM, FAKE_SK, FAKE_GOOGLE, FAKE_JWT, FAKE_ASSIGN],
+    [
+        FAKE_AWS,
+        FAKE_GH,
+        FAKE_PAT,
+        FAKE_SLACK,
+        FAKE_PEM,
+        FAKE_SK,
+        FAKE_GOOGLE,
+        FAKE_JWT,
+        FAKE_ASSIGN,
+    ],
 )
 def test_secret_values_turn_red(line):
     assert "secret-value" in ids(content.scan(None, f"設定はこれ: {line}"))

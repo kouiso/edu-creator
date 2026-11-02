@@ -1,3 +1,5 @@
+# 日本語の全角記号（（）、：など）は意図した表記なので、紛らわしい文字の警告は外す
+# ruff: noqa: RUF001, RUF002, RUF003
 """公開内容チェック: issue・PR・コメントの本文に、外へ出してはいけない内容が無いかを見る。
 
 当たった文字そのものは報告に書かない。規則の名前・行番号・件数だけを返す。
@@ -129,7 +131,9 @@ class Hit:
     count: int
 
 
-def scan(title: str | None, body: str | None, forbidden: list[re.Pattern[str]] | None = None) -> list[Hit]:
+def scan(
+    title: str | None, body: str | None, forbidden: list[re.Pattern[str]] | None = None
+) -> list[Hit]:
     """題と本文を1行ずつ見て、当たった規則・場所・件数を返す（当たった文字は返さない）。"""
     lines: list[tuple[str, str]] = []
     if title:
@@ -173,7 +177,9 @@ def report(target: str, hits: list[Hit]) -> str:
     """コメント用の本文。当たった文字そのものは載せない。"""
     if not hits:
         return f"**公開内容チェック: OK**\n\n{target}に、外へ出してはいけない内容は見つかりませんでした。"
-    rows = "\n".join(f"| {label} | {_place_text(places)} | {count} |" for label, places, count in summarize(hits))
+    rows = "\n".join(
+        f"| {label} | {_place_text(places)} | {count} |" for label, places, count in summarize(hits)
+    )
     return (
         f"**公開内容チェック: 要確認**\n\n"
         f"{target}に、公開リポジトリへ書いてはいけない内容が含まれている可能性があります。"

@@ -1,0 +1,32 @@
+name: Dependabot auto-merge
+
+# 月1回の「軽い更新（minor・patch）をまとめた PR」だけを自動マージの対象にする。
+# 大きい更新（major）と安全性の更新（まとめ PR に入らない）は手動。
+# 自動マージは必須の検査が通ってから行われる（GitHub の auto-merge）。
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read update metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2.2.0
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Enable auto-merge for grouped minor/patch updates
+        if: steps.metadata.outputs.dependency-group == 'minor-patch' && steps.metadata.outputs.update-type != 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          if ! gh pr merge --auto --squash "$PR_URL"; then
+            echo "::warning::自動マージを有効にできませんでした。リポ設定の Allow auto-merge が無効の可能性があります（手動でマージしてください）"
+          fi

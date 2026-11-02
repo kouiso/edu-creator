@@ -1,0 +1,39 @@
+name: Public content check
+
+# 公開リポジトリなので、issue・PR・コメントの本文に外へ出してはいけない内容が無いかを
+# 作成時と編集時に検査する。見つけたら赤にして「規則・行番号・件数」だけをコメントで知らせる。
+# 本文の自動編集・削除はしない。PR の外から来たコードは取り出さず、既定ブランチのスクリプトだけを動かす。
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created, edited]
+  pull_request_target:
+    types: [opened, edited, reopened]
+  pull_request_review_comment:
+    types: [created, edited]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # 既定ブランチを明示する（pull_request_review_comment の既定は PR 側のコードになるため）
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      # 本文はイベントの JSON から読む。式展開で run に埋め込まない（埋め込むと書いた人の文字列がそのまま実行される）
+      - name: Scan body
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOBOT_FORBIDDEN_PATTERNS: ${{ secrets.FORBIDDEN_PATTERNS }}
+          PYTHONPATH: scripts
+        run: python3 -m repobot content

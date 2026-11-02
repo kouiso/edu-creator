@@ -1,0 +1,49 @@
+name: "依頼（PBI）"
+description: "作ってほしい・直してほしい・調べてほしい時に使います"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        このリポは公開されています。秘密の値・データベースの情報・顧客名と金額・個人のメールアドレスは書かないでください。
+
+  - type: textarea
+    id: background
+    attributes:
+      label: "背景"
+      description: "なぜ必要か。困っとることをそのまま書いてください。"
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-state
+    attributes:
+      label: "今どこまで"
+      description: "分かっとること・もう済んだこと。何も無ければ「なし」。"
+    validations:
+      required: true
+
+  - type: textarea
+    id: next-step
+    attributes:
+      label: "次にやること"
+      description: "次の一手。順番があれば番号で。"
+    validations:
+      required: true
+
+  - type: textarea
+    id: waiting-on
+    attributes:
+      label: "誰の判断待ち"
+      description: "誰が何を決めるか。誰も待っとらんなら「なし」。"
+    validations:
+      required: true
+
+  - type: textarea
+    id: done-definition
+    attributes:
+      label: "完了条件"
+      description: "何がどうなっとれば終わりか。1行に1つ。"
+      value: |
+        - [ ] 
+    validations:
+      required: true

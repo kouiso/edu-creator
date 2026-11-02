@@ -143,3 +143,23 @@ def test_report_ok_when_clean():
 
 def test_none_body_is_safe():
     assert content.scan(None, None) == []
+
+
+def test_japanese_next_to_ascii_is_still_caught():
+    assert ids(content.scan(None, "連絡はtaro.yamada@gmail.comまで")) == ["personal-email"]
+    assert ids(content.scan(None, f"鍵は{FAKE_AWS}です")) == ["secret-value"]
+    assert ids(content.scan(None, "データベース名: app_main")) == ["database"]
+    assert ids(content.scan(None, "DB ID: 42")) == ["database"]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "エラーの回避方法を書く",
+        "pass" + "word: 未設定のまま",
+        "token: 必要に応じて",
+        "secret の名前は FORBIDDEN_PATTERNS",
+    ],
+)
+def test_common_wording_is_not_flagged(line):
+    assert content.scan(None, line) == []

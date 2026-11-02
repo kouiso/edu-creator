@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any
 
@@ -83,3 +84,23 @@ def is_bot(user: dict[str, Any] | None) -> bool:
     if not user:
         return False
     return user.get("type") == "Bot" or str(user.get("login", "")).endswith("[bot]")
+
+
+LABEL_COLOR = "ededed"
+
+
+def ensure_labels(client: Any, names: list[str]) -> list[str]:
+    """無いラベルだけ作る。作ったラベルの名前を返す。既にあるラベルには触らない。"""
+    created = []
+    for name in names:
+        path = f"/repos/{client.repo}/labels/{urllib.parse.quote(name, safe='')}"
+        try:
+            client.request("GET", path)
+        except GitHubError as e:
+            if e.status != 404:
+                raise
+            client.request(
+                "POST", f"/repos/{client.repo}/labels", {"name": name, "color": LABEL_COLOR}
+            )
+            created.append(name)
+    return created

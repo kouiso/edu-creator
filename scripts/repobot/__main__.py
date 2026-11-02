@@ -15,7 +15,7 @@ import sys
 from typing import Any
 
 from repobot import content, form, heading, triage
-from repobot.api import GitHub, GitHubError, is_bot, upsert_comment
+from repobot.api import GitHub, GitHubError, ensure_labels, is_bot, upsert_comment
 
 CONTENT_MARKER = "<!-- repobot:public-content:{key} -->"
 FORM_MARKER = "<!-- repobot:format -->"
@@ -154,6 +154,9 @@ def run_triage(event_name: str, event: dict[str, Any], client: Any, env: dict[st
     files = client.paginate(f"/repos/{client.repo}/pulls/{number}/files")
     labels = triage.labels_for((pr.get("head") or {}).get("ref"), [f["filename"] for f in files])
     if labels:
+        made = ensure_labels(client, labels)
+        if made:
+            _log(f"無かったラベルを作りました: {', '.join(made)}")
         # 追加だけ。既にあるラベルは消さない
         client.request("POST", f"/repos/{client.repo}/issues/{number}/labels", {"labels": labels})
         _log(f"ラベル: {', '.join(labels)}")

@@ -1,3 +1,5 @@
+# 日本語の全角記号（（）、：など）は意図した表記なので、紛らわしい文字の警告は外す
+# ruff: noqa: RUF001, RUF002, RUF003
 """issue・PR の書き方チェック（scripts/repobot/form.py）と見出し修正（heading.py）のテスト。"""
 
 import sys
@@ -7,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from repobot import form, heading  # noqa: E402
+from repobot import form, heading
 
 GOOD_ISSUE = """## 背景
 表示が遅い。
@@ -60,7 +62,9 @@ def test_form_headings_three_hashes_and_notes_are_accepted():
 
 
 def test_subheading_content_counts_for_parent():
-    body = GOOD_ISSUE.replace("## 次にやること\n1. 計測する", "## 次にやること\n### 手順\n1. 計測する")
+    body = GOOD_ISSUE.replace(
+        "## 次にやること\n1. 計測する", "## 次にやること\n### 手順\n1. 計測する"
+    )
     assert form.check_issue(body) == []
 
 
@@ -79,7 +83,9 @@ def test_complete_pr_is_green():
 
 
 def test_org_template_headings_are_accepted_for_pr():
-    body = "## 関連 Issue\n\n- Refs #6\n\n## 概要・背景・妥協点\n変える。\n\n## やったこと\n- 足した\n"
+    body = (
+        "## 関連 Issue\n\n- Refs #6\n\n## 概要・背景・妥協点\n変える。\n\n## やったこと\n- 足した\n"
+    )
     assert form.check_pr(body) == []
 
 
@@ -106,7 +112,10 @@ def test_pr_relation_needs_closes_or_refs(relation, ok):
 
 def test_pr_missing_and_empty_sections():
     body = "## 概要\n-\n\n## 関連Issue\nRefs #1\n"
-    assert form.check_pr(body) == ["「概要」の中身が書かれていません", "「変更内容」の見出しがありません"]
+    assert form.check_pr(body) == [
+        "「概要」の中身が書かれていません",
+        "「変更内容」の見出しがありません",
+    ]
 
 
 def test_red_to_green_by_fixing_body():
@@ -124,9 +133,18 @@ def user(login="alice", kind="User"):
     [
         ({"user": user(), "title": "普通"}, None),
         ({"user": user("dependabot[bot]", "Bot"), "title": "x"}, "ボットが作った issue"),
-        ({"user": user(), "title": "x", "labels": [{"name": "security-alert"}]}, "アラート系のラベル付き"),
-        ({"user": user(), "title": "x", "labels": [{"name": "アラート"}]}, "アラート系のラベル付き"),
-        ({"user": user(), "title": "[SBI] 分解", "labels": []}, "作業分解（SBI）の issue は本文が空でよい運用"),
+        (
+            {"user": user(), "title": "x", "labels": [{"name": "security-alert"}]},
+            "アラート系のラベル付き",
+        ),
+        (
+            {"user": user(), "title": "x", "labels": [{"name": "アラート"}]},
+            "アラート系のラベル付き",
+        ),
+        (
+            {"user": user(), "title": "[SBI] 分解", "labels": []},
+            "作業分解（SBI）の issue は本文が空でよい運用",
+        ),
         ({"user": user(), "title": "x", "pull_request": {"url": "u"}}, "PR は PR 側で検査する"),
     ],
 )

@@ -1,3 +1,5 @@
+# 日本語の全角記号（（）、：など）は意図した表記なので、紛らわしい文字の警告は外す
+# ruff: noqa: RUF002, RUF003
 """GitHub REST API を標準ライブラリだけで呼ぶ窓口と、目印つきコメントの作成・更新。"""
 
 from __future__ import annotations
@@ -66,7 +68,9 @@ def upsert_comment(
         if marker in (c.get("body") or ""):
             if c.get("body") == full:
                 return "unchanged"
-            client.request("PATCH", f"/repos/{client.repo}/issues/comments/{c['id']}", {"body": full})
+            client.request(
+                "PATCH", f"/repos/{client.repo}/issues/comments/{c['id']}", {"body": full}
+            )
             return "updated"
     if not create_if_missing:
         return "skipped"

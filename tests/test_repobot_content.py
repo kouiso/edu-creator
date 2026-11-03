@@ -342,3 +342,58 @@ def test_report_caps_places_to_stay_under_comment_limit():
     text = content.report("この issue", content.scan(None, body))
     assert "ほか29980か所" in text
     assert len(text) < 65536
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "サニタイズを回避する攻撃手順: 1. 送る",
+        "攻撃手順（防御側の視点は後述）: 1. 送る",
+        "SQL injection payload to bypass escaping: x OR 1=1",
+        "XSS payload: <script>x</script> bypasses the sanitizer",
+        "XSS 対策をすり抜ける payload はこれ",
+    ],
+)
+def test_attack_write_ups_are_caught_even_with_defence_words(line):
+    assert "attack-procedure" in ids(content.scan(None, line))
+
+
+def test_split_attack_rule_reports_one_row():
+    hits = content.scan(None, "攻撃手順はこれ\nexploit payload はこれ")
+    assert content.summarize(hits) == [("弱点や攻め方の手順", ["1", "2"], 2)]
+
+
+def _fake_tail(length, extra="", alphabet=None):
+    """秘密に見える値を、ソースに書かず実行時に作る（gitleaks が偽の鍵を拾わないように）。"""
+    import hashlib
+    import string
+
+    chars = alphabet or (string.ascii_letters + string.digits + extra)
+    digest = hashlib.sha256(b"repobot-fixture").digest() * 2
+    return "".join(chars[b % len(chars)] for b in digest[:length])
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "aws_secret" + "_access_key = " + _fake_tail(30, "/"),
+        "SECRET" + "_KEY=" + "django-insecure-" + _fake_tail(21),
+        "PRIVATE" + "_KEY=" + "0x" + _fake_tail(40, "", "0123456789abcdef"),
+    ],
+)
+def test_long_values_are_caught_even_when_the_name_is_public(line):
+    public = frozenset({"SECRET_KEY", "PRIVATE_KEY", "AWS_SECRET_ACCESS_KEY"})
+    assert "secret-value" in ids(content.scan(None, line, public=public))
+
+
+def test_bypass_method_wording_is_caught():
+    assert ids(content.scan(None, "エスケープをバイパスする方法")) == ["attack-procedure"]
+
+
+@pytest.mark.parametrize("line", ["x_secret_" * 7000 + ":", "a_" * 32000 + "=", "A_" * 32000])
+def test_name_shaped_long_input_is_fast(line):
+    import time
+
+    start = time.monotonic()
+    content.scan(None, line)
+    assert time.monotonic() - start < 5

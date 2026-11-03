@@ -342,3 +342,48 @@ def test_report_caps_places_to_stay_under_comment_limit():
     text = content.report("この issue", content.scan(None, body))
     assert "ほか29980か所" in text
     assert len(text) < 65536
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "サニタイズを回避する攻撃手順: 1. 送る",
+        "攻撃手順（防御側の視点は後述）: 1. 送る",
+        "SQL injection payload to bypass escaping: x OR 1=1",
+        "XSS payload: <script>x</script> bypasses the sanitizer",
+        "XSS 対策をすり抜ける payload はこれ",
+    ],
+)
+def test_attack_write_ups_are_caught_even_with_defence_words(line):
+    assert "attack-procedure" in ids(content.scan(None, line))
+
+
+def test_split_attack_rule_reports_one_row():
+    hits = content.scan(None, "攻撃手順はこれ\nexploit payload はこれ")
+    assert content.summarize(hits) == [("弱点や攻め方の手順", ["1", "2"], 2)]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "aws_secret" + "_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCY1",
+        "SECRET" + "_KEY=django-insecure-a8f7sd9f8a7sdf98a7sdf",
+        "PRIVATE" + "_KEY=0x4c0883a69102937d6231471b5dbb6204fe512961",
+    ],
+)
+def test_long_values_are_caught_even_when_the_name_is_public(line):
+    public = frozenset({"SECRET_KEY", "PRIVATE_KEY", "AWS_SECRET_ACCESS_KEY"})
+    assert "secret-value" in ids(content.scan(None, line, public=public))
+
+
+def test_bypass_method_wording_is_caught():
+    assert ids(content.scan(None, "エスケープをバイパスする方法")) == ["attack-procedure"]
+
+
+@pytest.mark.parametrize("line", ["x_secret_" * 7000 + ":", "a_" * 32000 + "=", "A_" * 32000])
+def test_name_shaped_long_input_is_fast(line):
+    import time
+
+    start = time.monotonic()
+    content.scan(None, line)
+    assert time.monotonic() - start < 5

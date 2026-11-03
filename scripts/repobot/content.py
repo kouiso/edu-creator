@@ -212,7 +212,12 @@ RULES: tuple[Rule, ...] = (
             r"(?<![A-Za-z0-9])(?:password|passwd|pwd|パスワード)\s*[:=：]\s*['\"]?"
             r"(?!v?\d+(?:\.\d+)+(?![A-Za-z0-9]))(?![/.~])"
             r"(?=[^\s'\"]*[0-9])(?=[^\s'\"]*[A-Za-z])[A-Za-z0-9+/=_.!@#$%^&*~-]{8,}",
-            r"(?<![A-Za-z0-9])(?:secret|token|api[_-]?key)\s*[:=：]\s*['\"]?"
+            # 名前の前に何が付いても（aws_secret_access_key・SECRET_KEY など）、長い値なら値として数える。
+            # 名前が公開済みでも、値は秘密のまま
+            # 前後に付く語は数を区切る（長い名前のような入力で検査が遅くならないように）
+            r"(?<![A-Za-z0-9])(?:[A-Za-z0-9]{1,30}[_-]){0,4}"
+            r"(?:secret|token|api[_-]?key|access[_-]?key|private[_-]?key)"
+            r"(?:[_-][A-Za-z0-9]{1,30}){0,3}\s*[:=：]\s*['\"]?"
             r"(?![/.~])(?=[^\s'\"]*[0-9])(?=[^\s'\"]*[A-Za-z])[A-Za-z0-9+/=_.!@#$%^&*~-]{16,}",
             flags=re.IGNORECASE,
         ),
@@ -222,15 +227,23 @@ RULES: tuple[Rule, ...] = (
         "attack-procedure",
         "弱点や攻め方の手順",
         _c(
-            r"(?:攻撃|悪用|侵入|突破|バイパス)(?:手順|方法|やり方)",
+            r"(?:攻撃|悪用|侵入|突破|バイパス)(?:する)?(?:手順|方法|やり方)",
             r"脆弱性.{0,20}(?:悪用|ペイロード|攻撃手順|再現手順|手順で(?:再現|悪用))",
+        ),
+    ),
+    # ペイロードの話は守る側（対策・防止）の文脈なら外す。ただし同じ行に「回避・突破」があれば攻める話として数える
+    Rule(
+        "attack-procedure",
+        "弱点や攻め方の手順",
+        _c(
             r"インジェクション.{0,40}ペイロード",
             r"\b(?:exploit|proof[- ]of[- ]concept|PoC)\b.{0,40}\bpayload\b",
             r"\b(?:sql ?injection|xss|ssrf|rce)\b.{0,40}\bpayload\b",
             flags=re.IGNORECASE,
         ),
         excludes=_c(
-            r"対策|防ぐ|防止|防御|エスケープ|サニタイズ|\bescap|\bsanitiz|\bmitigat|\bprevent",
+            r"^(?!.*(?:回避|バイパス|突破|すり抜け|\bbypass|\bevad|\bcircumvent))"
+            r".*(?:対策|防ぐ|防止|防御|\bmitigat|\bprevent)",
             flags=re.IGNORECASE,
         ),
     ),
@@ -361,7 +374,8 @@ def summarize(hits: list[Hit]) -> list[tuple[str, list[str], int]]:
 
     禁止語の場所は出さない。出すと、書き換えを繰り返して非公開の一覧を当てられてしまうため。
     """
-    order = [r.rule_id for r in RULES] + [FORBIDDEN_ID]
+    # 同じ規則名の行を2つに分けた規則があるので、重ねずに定義順で並べる
+    order = list(dict.fromkeys([r.rule_id for r in RULES] + [FORBIDDEN_ID]))
     out = []
     for rule_id in order:
         mine = [h for h in hits if h.rule_id == rule_id]

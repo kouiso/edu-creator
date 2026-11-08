@@ -48,6 +48,19 @@ class Distribution(Strict):
     manifest_product: str | None = None
 
 
+class Shot(Strict):
+    name: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    path: str
+    login: bool = False
+
+
+class Login(Strict):
+    path: str
+    # {CSS セレクタ: 入れる値}
+    fields: dict[str, str]
+    submit: str
+
+
 class Replay(Strict):
     """写経リプレイ（edu-creator replay）で Day のツリーを取り出す元と、Day ごとに確かめる道。"""
 
@@ -61,6 +74,11 @@ class Replay(Strict):
     setup: list[list[str]] = Field(default_factory=list)
     # {Day: {道: 期待する状態コード}}。ready_path（profile）は全 Day で 200 を見る
     paths: dict[int, dict[str, int]] = Field(default_factory=dict)
+    # 撮影（A7a）。{Day: [{name, path, login}]}。login が true の画面は先に login の手順でログインする
+    shots: dict[int, list[Shot]] = Field(default_factory=dict)
+    login: Login | None = None
+    # スクショの置き場（spec の置き場からの相対）。Day ごとに dayNN/ を作る
+    shots_dir: str = "build/shots"
 
     @field_validator("pattern")
     @classmethod

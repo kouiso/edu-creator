@@ -119,6 +119,9 @@ def _cmd_replay(args: argparse.Namespace) -> int:
             rp.paths.get(d),
             install=rp.install and not args.no_install,
             setup=rp.setup,
+            shots=[s.model_dump() for s in rp.shots.get(d, [])],
+            login=rp.login.model_dump() if rp.login else None,
+            shots_dir=spec_path.parent / rp.shots_dir,
         )
         print(f"{'OK  ' if r.ok else 'FAIL'} Day{d:02d}")
         for s in r.steps:

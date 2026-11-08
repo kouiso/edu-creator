@@ -15,6 +15,7 @@ Day ごとに確かめる道は course-spec の qa.replay_paths（{Day: {道: �
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import shutil
 import signal
@@ -28,7 +29,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from email.message import Message
 from pathlib import Path
-from typing import IO
+from typing import IO, Any
 
 from educreator.profiles import StackProfile
 
@@ -134,6 +135,9 @@ def replay_day(
     install: bool = True,
     ready_timeout: float = 60.0,
     setup: list[list[str]] | None = None,
+    shots: list[dict[str, Any]] | None = None,
+    login: dict[str, Any] | None = None,
+    shots_dir: Path | None = None,
 ) -> DayResult:
     res = DayResult(day, ok=True)
     with checkout(src, day) as tree:
@@ -192,6 +196,15 @@ def replay_day(
                     res.fail(f"{path} が {got} を返した（{want} のはず）")
                 else:
                     res.steps.append(f"✅ {path} が {want}")
+            if shots:
+                shot_dir = (shots_dir or Path(tempfile.gettempdir())) / f"day{day:02d}"
+                for r in take_shots(base, shots, login, shot_dir):
+                    if r.get("ok"):
+                        res.steps.append(f"✅ 撮影 {r['name']}（{r['status']}）")
+                    else:
+                        res.fail(
+                            f"撮影 {r['name']} が失敗（{r.get('status')}）: {r.get('error', '')}"
+                        )
             return res
         finally:
             with contextlib.suppress(ProcessLookupError):
@@ -202,6 +215,31 @@ def replay_day(
                 with contextlib.suppress(ProcessLookupError):
                     os.killpg(proc.pid, signal.SIGKILL)
                 proc.wait()
+
+
+SHOOT_JS = Path(__file__).with_name("shoot.cjs")
+
+
+def take_shots(
+    base: str, shots: list[dict[str, Any]], login: dict[str, Any] | None, out: Path
+) -> list[dict[str, Any]]:
+    """起動中のサーバーから、画面のスクショを撮る（Playwright。配色はライトに固定）。"""
+    out.mkdir(parents=True, exist_ok=True)
+    payload = {"base": base, "shots": shots, "login": login, "out": str(out)}
+    p = subprocess.run(
+        ["node", str(SHOOT_JS)],
+        input=json.dumps(payload, ensure_ascii=False),
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+    if p.returncode != 0:
+        return [
+            {"name": s["name"], "ok": False, "status": 0, "error": p.stderr.strip()[-300:]}
+            for s in shots
+        ]
+    return list(json.loads(p.stdout))
 
 
 def parse_days(spec: str, last: int) -> list[int]:

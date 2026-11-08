@@ -136,3 +136,51 @@ def test_parse_days():
     assert parse_days("1-3,5,3", 30) == [1, 2, 3, 5]
     with pytest.raises(ValueError, match="範囲"):
         parse_days("0-2", 30)
+
+
+def _has_playwright() -> bool:
+    try:
+        return (
+            subprocess.run(
+                ["node", "-e", "require('playwright')"], capture_output=True, check=False
+            ).returncode
+            == 0
+        )
+    except FileNotFoundError:
+        return False
+
+
+needs_playwright = pytest.mark.skipif(not _has_playwright(), reason="Node の Playwright が無い")
+
+
+@needs_playwright
+def test_screenshots_are_taken_in_light_scheme(tagged_repo, tmp_path):
+    shots = [
+        {"name": "top", "path": "/", "login": False},
+        {"name": "gone", "path": "/nope", "login": False},
+    ]
+    r = replay_day(
+        PROFILE,
+        DaySource("git", tagged_repo, "day-{nn}-end"),
+        1,
+        shots=shots,
+        shots_dir=tmp_path / "shots",
+    )
+    png = tmp_path / "shots" / "day01" / "top.png"
+    assert png.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    # 404 の画面は撮れても不合格にする（教材に壊れた画面を載せない）
+    assert not r.ok and "撮影 gone が失敗（404）" in r.steps[-1]
+    assert "✅ 撮影 top（200）" in r.steps
+
+
+@needs_playwright
+def test_login_shot_without_login_config_fails(tagged_repo, tmp_path):
+    shots = [{"name": "private", "path": "/tasks", "login": True}]
+    r = replay_day(
+        PROFILE,
+        DaySource("git", tagged_repo, "day-{nn}-end"),
+        1,
+        shots=shots,
+        shots_dir=tmp_path / "s",
+    )
+    assert not r.ok and "replay.login が無い" in r.steps[-1]

@@ -97,6 +97,13 @@ class JudgeSpec(Strict):
     calibrated: list[str] = Field(default_factory=list)
 
 
+class DesignSpec(Strict):
+    """design の段（A13）。役割の振る舞いの表（書式は educreator/design.py の cell）の置き場。spec の置き場からの相対"""
+
+    access: str | None = None
+    out: str = "docs/design/screen-matrix.md"
+
+
 class CourseSpec(Strict):
     spec_version: Literal[1] = 1
     name: str
@@ -112,6 +119,7 @@ class CourseSpec(Strict):
     chapters: list[Chapter] = Field(default_factory=list)
     replay: Replay | None = None
     judge: JudgeSpec = Field(default_factory=JudgeSpec)
+    design: DesignSpec = Field(default_factory=DesignSpec)
     # 検査に渡す値の、教材ごとの上書き（stack profile の qa を上書きする。公開先のサービス名など教材で決まるもの）
     qa: dict[str, Any] = Field(default_factory=dict)
 

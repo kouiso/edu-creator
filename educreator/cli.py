@@ -188,6 +188,34 @@ def _cmd_judge(args: argparse.Namespace) -> int:
     return 1 if problems else 0
 
 
+def _cmd_design(args: argparse.Namespace) -> int:
+    from pydantic import ValidationError
+
+    from educreator import design as D
+    from educreator.profiles import load_profile
+    from educreator.spec import load_spec
+
+    spec_path = Path(args.spec)
+    try:
+        spec = load_spec(spec_path)
+        profile = load_profile(spec.stack_profile)
+        if profile.routes is None:
+            raise ValueError(f"stack profile '{profile.name}' にルートの集め方（routes）が無い")
+        repo = spec_path.parent / spec.app_repo
+        routes = D.discover(profile.routes.kind, repo / profile.routes.root)
+        access_path = spec_path.parent / spec.design.access if spec.design.access else None
+        m = D.build(routes, D.load_access(access_path))
+    except (ValidationError, ValueError) as e:
+        print(f"エラー: {e}", file=sys.stderr)
+        return 2
+    out = Path(args.out) if args.out else spec_path.parent / spec.design.out
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(m.markdown, encoding="utf-8")
+    print(f"{out}: {m.stats}")
+    # R-1 の空きマス0件を合否にする
+    return 1 if m.stats["blank"] else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="edu-creator", description="教材を作る道具（edu-creator 3.0）")
     p.add_argument("--version", action="version", version=__version__)
@@ -244,6 +272,15 @@ def build_parser() -> argparse.ArgumentParser:
     js = jsub.add_parser("report", help="残した採点から管理図と R-6 の判定を出す")
     js.add_argument("--spec", default="course-spec.yaml")
     j.set_defaults(func=_cmd_judge)
+
+    dz = sub.add_parser("design", help="画面の直積表を作り、R-1 の空きマスを数える（A13）")
+    dsub = dz.add_subparsers(dest="design_cmd", required=True)
+    dm = dsub.add_parser(
+        "matrix", help="ルート × 役割 × 状態の表を書き出す。空きマスがあれば 1 で終わる"
+    )
+    dm.add_argument("--spec", default="course-spec.yaml")
+    dm.add_argument("--out", help="書き出し先（省略で course-spec の design.out）")
+    dz.set_defaults(func=_cmd_design)
 
     lessons = sub.add_parser("lessons", help="学び台帳を検査する（E-7）")
     lsub = lessons.add_subparsers(dest="lessons_cmd", required=True)

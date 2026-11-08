@@ -10,6 +10,9 @@ start: ["poetry", "run", "flask", "run", "--port", "{port}"]
 test: ["poetry", "run", "pytest"]
 url: "http://127.0.0.1:{port}"
 ready_path: "/login"
+routes:
+  kind: decorator-routes
+  root: app/routes
 qa:
   code_langs: [python, py, html, jinja, toml, ini]
   real_prefixes: [app/, tests/, migrations/]

@@ -56,6 +56,15 @@ class QaConfig(BaseModel):
     forward_refs_approved: dict[str, str] = Field(default_factory=dict)
 
 
+class RoutesConfig(BaseModel):
+    """ルートの集め方（design）。kind は decorator-routes か page-files、root はアプリのリポジトリからの相対"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str
+    root: str
+
+
 class StackProfile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -69,6 +78,7 @@ class StackProfile(BaseModel):
     url: str
     ready_path: str = "/"
     qa: QaConfig
+    routes: RoutesConfig | None = None
 
 
 @cache

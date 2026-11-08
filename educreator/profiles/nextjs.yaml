@@ -11,6 +11,9 @@ start: ["npm", "run", "dev", "--", "--port", "{port}"]
 test: ["npm", "test"]
 url: "http://127.0.0.1:{port}"
 ready_path: "/"
+routes:
+  kind: page-files
+  root: src/app
 qa:
   code_langs: [typescript, ts, tsx, javascript, js, jsx]
   real_prefixes: [src/, prisma/, scripts/]

@@ -132,6 +132,62 @@ def _cmd_replay(args: argparse.Namespace) -> int:
     return 1 if failed else 0
 
 
+def _cmd_judge(args: argparse.Namespace) -> int:
+    from pydantic import ValidationError
+
+    from educreator import judge as J
+    from educreator.accounts import AccountError, load_accounts
+    from educreator.replay import parse_days
+    from educreator.spec import load_spec
+
+    spec_path = Path(args.spec)
+    try:
+        spec = load_spec(spec_path)
+        out_dir = spec_path.parent / spec.judge.out_dir
+        if args.judge_cmd == "run":
+            cfg = load_accounts(Path(args.config) if args.config else None)
+            account = cfg.get(args.provider, args.account)
+            days = parse_days(args.days, spec.days)
+    except (ValidationError, ValueError, AccountError) as e:
+        print(f"エラー: {e}", file=sys.stderr)
+        return 2
+    if args.judge_cmd == "run":
+        mat = spec_path.parent / spec.material_dir
+        failed = 0
+        for d in days:
+            md = next(iter(sorted(mat.glob(f"day{d:02d}_*.md"))), None)
+            if md is None:
+                print(f"FAIL Day{d:02d}: 本文が無い")
+                failed += 1
+                continue
+            try:
+                r = J.judge_day(md, d, account, state_dir=cfg.state_dir)
+            except J.JudgeError as e:
+                print(f"FAIL {e}")
+                failed += 1
+                continue
+            path = J.save(r, out_dir)
+            print(f"OK   Day{d:02d} {r.judge} {r.scores} → {path}")
+        return 1 if failed else 0
+    reports = J.load_all(out_dir)
+    if not reports:
+        print(f"{out_dir} に採点が無い")
+        return 1
+    for dim, _ in J.DIMENSIONS:
+        c = J.control_chart(reports, dim)
+        flag = (
+            "、外れ: " + ", ".join(f"Day{d:02d}({v:.1f})" for d, v in c.out_of_control)
+            if c.out_of_control
+            else ""
+        )
+        print(f"{dim:<17} X̄ {c.mean:.2f}  σ {c.sigma:.2f}{flag}")
+    problems = J.gate(reports, spec.judge.calibrated)
+    print(f"合否に使う次元（較正済み）: {', '.join(spec.judge.calibrated) or 'なし（参考値だけ）'}")
+    for p in problems:
+        print(f"  ❌ {p}")
+    return 1 if problems else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="edu-creator", description="教材を作る道具（edu-creator 3.0）")
     p.add_argument("--version", action="version", version=__version__)
@@ -176,6 +232,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rp.add_argument("-v", "--verbose", action="store_true")
     rp.set_defaults(func=_cmd_replay)
+
+    j = sub.add_parser("judge", help="Day を5つの次元で採点し、管理図と R-6 で見る（A6）")
+    jsub = j.add_subparsers(dest="judge_cmd", required=True)
+    jr = jsub.add_parser("run", help="Day を採点して reports/judge に残す")
+    jr.add_argument("--spec", default="course-spec.yaml")
+    jr.add_argument("--days", required=True, help="1-3,5 のように指定")
+    jr.add_argument("--provider", choices=["claude", "chatgpt"], default="claude")
+    jr.add_argument("--account", default="personal-1")
+    jr.add_argument("--config", help="edu-creator.toml のパス")
+    js = jsub.add_parser("report", help="残した採点から管理図と R-6 の判定を出す")
+    js.add_argument("--spec", default="course-spec.yaml")
+    j.set_defaults(func=_cmd_judge)
 
     lessons = sub.add_parser("lessons", help="学び台帳を検査する（E-7）")
     lsub = lessons.add_subparsers(dest="lessons_cmd", required=True)

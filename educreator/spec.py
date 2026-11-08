@@ -88,6 +88,15 @@ class Replay(Strict):
         return v
 
 
+class JudgeSpec(Strict):
+    """Judge（A6）の設定。較正（E-6）が済んだ次元だけを合否に使う。"""
+
+    # 結果の置き場（spec の置き場からの相対）
+    out_dir: str = "reports/judge"
+    # 較正が済んだ次元（clarity・accessibility・engagement・actionability・self_containment）
+    calibrated: list[str] = Field(default_factory=list)
+
+
 class CourseSpec(Strict):
     spec_version: Literal[1] = 1
     name: str
@@ -102,6 +111,7 @@ class CourseSpec(Strict):
     distribution: Distribution
     chapters: list[Chapter] = Field(default_factory=list)
     replay: Replay | None = None
+    judge: JudgeSpec = Field(default_factory=JudgeSpec)
     # 検査に渡す値の、教材ごとの上書き（stack profile の qa を上書きする。公開先のサービス名など教材で決まるもの）
     qa: dict[str, Any] = Field(default_factory=dict)
 

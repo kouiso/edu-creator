@@ -104,6 +104,15 @@ task-app で 662〜997 件の誤検出を出したので、この絞り方にし
   R-5（0件）に反するので、直すか了承するかはユーザーの判断（プランの U-5）
 - Next.js 版: 0件
 
+## 章IDの命名の教材（2026-11-08）
+
+sns-app は章を `curriculum/<章ID>.md` に置き、連番を名前に入れない（D1-2）。取り込んだ検査は `day[0-9][0-9]_*.md` を探すので、
+`edu-creator check` は course-spec の naming: chapter-id のとき、章の並び順で `dayNN_<章ID>.md` のシンボリックリンクを一時フォルダに
+並べて検査に渡す（検査の中身は変えない）。画像などのフォルダもリンクで並べる。
+
+sns-app の試作章2本で試すと、22本中17本が通った。落ちた5本（理解チェックの節・所要時間の表・コード直後の説明・図とスクショ）は
+前作2本の書式で書かれていないことの指摘で、sns-app にこれらを当てるかは号砲 #11 で決める。
+
 共有の部品: `markdown_scan.py`（両方で同じ）、`fence_roles.py`、`curriculum_blocks.py`（`code_langs`・`real_prefixes`・
 `real_root_files`・`real_root_files_manifest` を `qa` から受け取る。書き込み先の目印は両スタックの書き方を全部受ける）。
 
@@ -115,5 +124,4 @@ task-app で 662〜997 件の誤検出を出したので、この絞り方にし
 | Next.js 版だけ | complete-code・complete-section-fences・false-success・procedure-order・tag-balance・unclosed-screen・version-split・scaffold-src-sync・scaffold-curriculum-alignment | JSX 固有のもの（jsx-marker・tag-balance）は nextjs の profile だけで有効にする |
 | Flask 版だけ | day-trees・scaffold-zip-sync（day-budget は本文から実測する budget に置き換えた） | リプレイ（A4）・梱包（A8）と一緒に |
 | まだ無い | 想定エラーの枠（G12）・テンプレートのクラス名の存在（R3a の配布 CSS ができてから） | 新しく書く |
-| 章IDの命名に対応 | 教材のフォルダを読む検査の多く（`day[0-9][0-9]_*.md` を探す） | sns-app は章を `curriculum/<章ID>.md` に置き、連番を名前に入れない（D1-2）。course-spec の naming: chapter-id と chapters の並び順から対象のファイルを渡す形に変える。今は spec check だけが対応している |
 | 文章の検査 | run_writing_lint（両方で同じ。textlint の設定も1つにまとめる） | 辞書の置き場を `qa` に出す |

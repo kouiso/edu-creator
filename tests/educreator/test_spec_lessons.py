@@ -194,3 +194,35 @@ def test_chapter_id_naming(tmp_path):
         CourseSpec.model_validate(
             {**data, "chapters": [{"day": 1, "id": "a", "title": "x", "file": "b.md"}]}
         )
+
+
+def test_check_runs_on_chapter_id_material(tmp_path, capsys):
+    mat = tmp_path / "curriculum"
+    (mat / "screenshots").mkdir(parents=True)
+    (mat / "README.md").write_text("# 置き場\n", encoding="utf-8")
+    (mat / "expo-first-screen.md").write_text(
+        "# はじめての画面\n\n## Step 1: 開く\n\n本文\n", encoding="utf-8"
+    )
+    (mat / "live-reload.md").write_text("# 書き換え\n\n本文\n", encoding="utf-8")
+    data = {
+        **BASE,
+        "stack_profile": "expo",
+        "material_dir": "curriculum",
+        "naming": "chapter-id",
+        "days": 31,
+        "chapters": [
+            {"day": 20, "id": "live-reload", "title": "書き換え", "file": "live-reload.md"},
+            {
+                "day": 10,
+                "id": "expo-first-screen",
+                "title": "はじめての画面",
+                "file": "expo-first-screen.md",
+            },
+        ],
+    }
+    p = tmp_path / "course-spec.yaml"
+    p.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    # 章IDの名前のままでも、検査が章を拾う（並び順で day01・day02 として見せる）
+    assert main(["check", "--spec", str(p), "setext-heading", "budget", "-v"]) == 0
+    out = capsys.readouterr().out
+    assert "| 01 |" in out and "| 02 |" in out

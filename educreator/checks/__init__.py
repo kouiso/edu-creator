@@ -6,10 +6,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
 import sys
+import tempfile
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -119,6 +122,26 @@ class CheckResult:
 
 # 検査の対象にする教材のファイル（両教材の check_quality.sh と同じ規則）
 MATERIAL_GLOBS = ("day[0-9][0-9]_*.md", "appendix_*.md")
+
+
+@contextlib.contextmanager
+def day_view(material: Path, chapters: list[tuple[int, str]]) -> Iterator[Path]:
+    """章IDで名前を付けた教材を、検査が読める `dayNN_<章ID>.md` の並びに見せる一時フォルダ。
+
+    取り込んだ検査は教材のファイルを `day[0-9][0-9]_*.md` で探す。検査の中身は取り込み元の形のまま変えず、
+    章の並び順（course-spec の chapters）から名前を付けたシンボリックリンクを並べて渡す。
+    画像などのフォルダもリンクで並べ、本文からの相対の参照が切れないようにする。
+    """
+    with tempfile.TemporaryDirectory(prefix="chapters-") as tmp:
+        view = Path(tmp)
+        for order, (_day, file) in enumerate(sorted(chapters), start=1):
+            src = material / file
+            if src.is_file():
+                (view / f"day{order:02d}_{Path(file).stem}.md").symlink_to(src.resolve())
+        for p in material.iterdir():
+            if p.is_dir():
+                (view / p.name).symlink_to(p.resolve(), target_is_directory=True)
+        yield view
 
 
 def material_files(target: Path) -> list[Path]:

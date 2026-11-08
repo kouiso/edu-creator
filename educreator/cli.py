@@ -7,6 +7,7 @@ plan・design・stage・write・gate・package などは WBS の順（A3〜A13�
 from __future__ import annotations
 
 import argparse
+import contextlib
 import sys
 from pathlib import Path
 
@@ -77,16 +78,22 @@ def _cmd_check(args: argparse.Namespace) -> int:
     except (ValidationError, ValueError, KeyError) as e:
         print(f"エラー: {e}", file=sys.stderr)
         return 2
-    target = spec_path.parent / spec.material_dir
+    material = spec_path.parent / spec.material_dir
+    view: contextlib.AbstractContextManager[Path] = (
+        checks.day_view(material, [(c.day, c.file) for c in spec.chapters])
+        if spec.naming == "chapter-id"
+        else contextlib.nullcontext(material)
+    )
     failed = 0
-    for c in selected:
-        r = checks.run_check(c, target, config)
-        print(f"{'OK  ' if r.ok else 'FAIL'} {c.id}")
-        if not r.ok:
-            failed += 1
-        # 落ちた検査は1本だけなら出力を出す。-v なら通った検査の出力（budget の表など）も出す
-        if args.verbose or (not r.ok and len(selected) == 1):
-            print(r.output)
+    with view as target:
+        for c in selected:
+            r = checks.run_check(c, target, config)
+            print(f"{'OK  ' if r.ok else 'FAIL'} {c.id}")
+            if not r.ok:
+                failed += 1
+            # 落ちた検査は1本だけなら出力を出す。-v なら通った検査の出力（budget の表など）も出す
+            if args.verbose or (not r.ok and len(selected) == 1):
+                print(r.output)
     print(f"{len(selected) - failed}/{len(selected)} 件通過")
     return 1 if failed else 0
 

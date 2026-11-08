@@ -75,6 +75,23 @@ anchor の自己テストは完成版のリポジトリに実在するファイ�
 zip-reference と sale-package は、配布 ZIP の中身を各リポジトリのビルドの仕組み（`Makefile`・`build-zip.sh`）から読むので、
 梱包を作る A8 と一緒に統合する。
 
+## 新しく書いた検査: budget（Day 予算。G9・R-3）
+
+Flask 版の `check_day_budget.py` は見積もりの表（`day-budget.json`）を前提にしていたので取り込まず、本文から実測する検査を書いた。
+上限は course-spec の `budget`、超過の了承は `qa.budget_approved`（Day・軸・理由）、上限を合否に使わない教材は `qa.budget_report_only`。
+
+| 軸 | 数え方 | 合否 |
+|---|---|---|
+| 写経の行 | 実ファイルへ書く写経対象の言語のブロックの、空行・目印・省略の行を除いた行。`expect` のブロックは数えない | **警告だけ**。ブロックには「どこに足すか」を示す既にある周りの行も入るので上限値になる。打つ行はリプレイ（A4）の Day ごとの差分で数える |
+| ファイル | 写経のブロックの書き込み先の種類 | 合否に使う |
+| 分 | 本文の `**合計時間**` | 合否に使う |
+| 概念 | 本文からは数えられない | 未測定（A9 の概念の台帳ができてから） |
+
+実測（2026-11-08）:
+- Flask 版: 分の超過は Day18・21・24・26・27 で、どれもユーザーが了承した14日（`day-budget.json` の over）に入る。了承を写すと通る。
+  写経の上限値は Day21（232）と Day27（217）だけが 200 を超えた
+- Next.js 版（報告だけ）: 写経の上限値は 0〜2,945 行で、30日中26日が 200 を超えた。ファイルは Day07 が 7、Day26 が 12。プランの G9 の裏づけ
+
 共有の部品: `markdown_scan.py`（両方で同じ）、`fence_roles.py`、`curriculum_blocks.py`（`code_langs`・`real_prefixes`・
 `real_root_files`・`real_root_files_manifest` を `qa` から受け取る。書き込み先の目印は両スタックの書き方を全部受ける）。
 
@@ -84,6 +101,6 @@ zip-reference と sale-package は、配布 ZIP の中身を各リポジトリ�
 |---|---|---|
 | 両方にあり中身が違う | zip-reference・sale-package（A8 と一緒に） | 差を読み、スタックの語の一覧（comprehension の技術語、tech-stack の禁止ライブラリ）を `qa` に出す |
 | Next.js 版だけ | complete-code・complete-section-fences・false-success・procedure-order・tag-balance・unclosed-screen・version-split・scaffold-src-sync・scaffold-curriculum-alignment | JSX 固有のもの（jsx-marker・tag-balance）は nextjs の profile だけで有効にする |
-| Flask 版だけ | day-budget（Day 予算の4軸）・day-trees・scaffold-zip-sync | day-budget は `course-spec.yaml` の `budget` を上限に使う |
+| Flask 版だけ | day-trees・scaffold-zip-sync（day-budget は本文から実測する budget に置き換えた） | リプレイ（A4）・梱包（A8）と一緒に |
 | まだ無い | 想定エラーの枠（G12）・テンプレートのクラス名の存在（R3a の配布 CSS ができてから） | 新しく書く |
 | 文章の検査 | run_writing_lint（両方で同じ。textlint の設定も1つにまとめる） | 辞書の置き場を `qa` に出す |

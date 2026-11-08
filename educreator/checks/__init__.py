@@ -72,6 +72,7 @@ CHECKS: tuple[CheckDef, ...] = (
     CheckDef(
         "anchor", "check_anchor.py", "コードブロックの書き込み先（続き・実在・読み比べ用の目印）"
     ),
+    CheckDef("budget", "check_budget.py", "Day 予算（写経の行・ファイル・分）を本文から実測"),
 )
 
 
@@ -82,11 +83,21 @@ def get(check_id: str) -> CheckDef:
     raise KeyError(f"検査 '{check_id}' は無い。使えるもの: {', '.join(c.id for c in CHECKS)}")
 
 
-def qa_config(profile: str, overrides: dict[str, Any], repo_root: Path) -> dict[str, Any]:
-    """stack profile の qa に、教材ごとの上書きを重ねる。上書きの値も同じ型で検める。"""
+def qa_config(
+    profile: str,
+    overrides: dict[str, Any],
+    repo_root: Path,
+    budget: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    """stack profile の qa に、教材ごとの上書きを重ねる。上書きの値も同じ型で検める。
+
+    budget は course-spec の budget（Day 予算の上限。check_budget が使う）。
+    """
     base = load_profile(profile).qa.model_dump()
     merged = QaConfig.model_validate({**base, **overrides}).model_dump()
     merged["repo_root"] = str(repo_root.resolve())
+    if budget is not None:
+        merged["budget"] = budget
     return merged
 
 

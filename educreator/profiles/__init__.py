@@ -42,6 +42,10 @@ class QaConfig(BaseModel):
     screenshot_exempt: dict[str, str] = Field(default_factory=dict)
     # mermaid の図を必須にする Day（check_visualization）
     required_mermaid_days: list[int] = Field(default_factory=list)
+    # Day 予算の超過の了承（check_budget）。{Day: {軸: 理由}}。軸は copy_lines・files・minutes
+    budget_approved: dict[int, dict[str, str]] = Field(default_factory=dict)
+    # true なら Day 予算を超えても落とさず、表を出すだけにする（check_budget）
+    budget_report_only: bool = False
 
 
 class StackProfile(BaseModel):

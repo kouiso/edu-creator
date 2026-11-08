@@ -70,7 +70,9 @@ def _cmd_check(args: argparse.Namespace) -> int:
     spec_path = Path(args.spec)
     try:
         spec = load_spec(spec_path)
-        config = checks.qa_config(spec.stack_profile, spec.qa, spec_path.parent / spec.app_repo)
+        config = checks.qa_config(
+            spec.stack_profile, spec.qa, spec_path.parent / spec.app_repo, spec.budget.model_dump()
+        )
         selected = [checks.get(i) for i in args.ids] if args.ids else list(checks.CHECKS)
     except (ValidationError, ValueError, KeyError) as e:
         print(f"エラー: {e}", file=sys.stderr)
@@ -82,8 +84,9 @@ def _cmd_check(args: argparse.Namespace) -> int:
         print(f"{'OK  ' if r.ok else 'FAIL'} {c.id}")
         if not r.ok:
             failed += 1
-            if args.verbose or len(selected) == 1:
-                print(r.output)
+        # 落ちた検査は1本だけなら出力を出す。-v なら通った検査の出力（budget の表など）も出す
+        if args.verbose or (not r.ok and len(selected) == 1):
+            print(r.output)
     print(f"{len(selected) - failed}/{len(selected)} 件通過")
     return 1 if failed else 0
 

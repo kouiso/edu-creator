@@ -15,3 +15,4 @@ qa:
   code_langs: [typescript, ts, tsx, javascript, js, jsx, sql]
   real_prefixes: [app/, src/, supabase/]
   crossref_ignore: [npm, npx, app, src, README.md]
+  jsx_langs: [tsx, jsx, typescript, javascript, ts, js]

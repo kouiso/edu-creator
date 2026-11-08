@@ -28,6 +28,8 @@ class QaConfig(BaseModel):
     crossref_ignore: list[str] = Field(default_factory=list)
     # ブラウザで操作する手順だと分かる語に足す、公開先のサービス名（check_no_skip）
     gui_services: list[str] = Field(default_factory=list)
+    # 要素の中の改行を空白に畳んで描画する JSX の言語（check_ja_line_break。無ければ何も見ない）
+    jsx_langs: list[str] = Field(default_factory=list)
 
 
 class StackProfile(BaseModel):

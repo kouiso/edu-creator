@@ -16,13 +16,18 @@ from educreator.checks import qa_config
 
 QA_TESTS = sorted((Path(__file__).parent / "qa").glob("selftest_*.py"))
 
+# 自己テストは取り込み元の教材の値で動かす（取り込み元に無い値では、取り込み元の想定どおりに落ちない）
+ORIGIN = {
+    "selftest_check_ja_latin_space": ("nextjs", {"gui_services": ["Vercel"]}),
+    "selftest_check_ja_line_break": ("nextjs", {"gui_services": ["Vercel"]}),
+}
+
 
 @pytest.mark.parametrize("path", QA_TESTS, ids=[p.stem for p in QA_TESTS])
 def test_vendored_selftest(path, tmp_path):
     env = dict(os.environ)
-    env["EDU_CREATOR_QA_JSON"] = json.dumps(
-        qa_config("flask", {"gui_services": ["Render"]}, tmp_path)
-    )
+    profile, overrides = ORIGIN.get(path.stem, ("flask", {"gui_services": ["Render"]}))
+    env["EDU_CREATOR_QA_JSON"] = json.dumps(qa_config(profile, overrides, tmp_path))
     proc = subprocess.run(
         [sys.executable, str(path)],
         env=env,

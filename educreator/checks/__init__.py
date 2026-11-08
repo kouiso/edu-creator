@@ -51,6 +51,8 @@ CHECKS: tuple[CheckDef, ...] = (
         "「省略」で切ったコードブロック",
         per_file=True,
     ),
+    CheckDef("ja-latin-space", "check_ja_latin_space.py", "和文と英字の間の空白の有無の揃え"),
+    CheckDef("ja-line-break", "check_ja_line_break.py", "画面に出る日本語の文の、JSX の中での途中改行"),
 )
 
 

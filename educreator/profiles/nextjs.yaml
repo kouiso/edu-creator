@@ -39,3 +39,12 @@ qa:
   tech_terms: [Next.js, React, TypeScript, Prisma, tRPC, Tailwind, shadcn, Supabase, PostgreSQL, Docker, Vercel,
     SSR, SSG, ISR, CSR, API, ORM, CLI, CRUD, JWT, OAuth, CDN, DNS, コンポーネント, ミドルウェア, スキーマ, マイグレーション, デプロイ, レンダリング, ルーティング, スキャフォールド,
     useState, useEffect, useMemo, useCallback, Props, 型定義, 型推論, ジェネリクス, インターフェース, 外部キー, トランザクション, インデックス, リレーション]
+  # トップレベル（字下げ無し）の定義だけ
+  def_patterns:
+    - '^(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)'
+    - '^(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*='
+    - '^(?:export\s+)?(?:type|interface)\s+([A-Za-z_$][\w$]*)'
+    - '^model\s+([A-Za-z_]\w*)\s*\{'
+  import_patterns:
+    - '^import\s+(?:type\s+)?\{([^}]*)\}'
+    - '^import\s+([A-Za-z_$][\w$]*)\s+from'

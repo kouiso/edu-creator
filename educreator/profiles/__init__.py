@@ -35,6 +35,12 @@ class QaConfig(BaseModel):
     tech_terms: list[str] = Field(default_factory=list)
     # 技術の範囲（check_tech_stack）。forbidden: [[正規表現, 表示名]]、expect: [正規表現]、文面（msg_*）
     tech_stack: dict[str, Any] = Field(default_factory=dict)
+    # 定義の書き方（check_forward_refs）。捕獲群1が定義した名前の正規表現
+    def_patterns: list[str] = Field(default_factory=list)
+    # import で入る名前（check_forward_refs）。捕獲群1が名前の並び（`a, b as c`）の正規表現
+    import_patterns: list[str] = Field(default_factory=list)
+    # 前方参照の検査で外す名前（フレームワークが持つ同名の物など）
+    forward_refs_ignore: list[str] = Field(default_factory=list)
     # 以下は教材で決まる値（course-spec の qa に書く）
     # 所要時間の表を持たない Day（check_step_time）
     no_table_days: list[int] = Field(default_factory=list)
@@ -46,6 +52,8 @@ class QaConfig(BaseModel):
     budget_approved: dict[int, dict[str, str]] = Field(default_factory=dict)
     # true なら Day 予算を超えても落とさず、表を出すだけにする（check_budget）
     budget_report_only: bool = False
+    # 了承した前方参照（check_forward_refs）。{"ファイル: 名前": 理由}
+    forward_refs_approved: dict[str, str] = Field(default_factory=dict)
 
 
 class StackProfile(BaseModel):

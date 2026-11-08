@@ -73,6 +73,11 @@ CHECKS: tuple[CheckDef, ...] = (
         "anchor", "check_anchor.py", "コードブロックの書き込み先（続き・実在・読み比べ用の目印）"
     ),
     CheckDef("budget", "check_budget.py", "Day 予算（写経の行・ファイル・分）を本文から実測"),
+    CheckDef(
+        "forward-refs",
+        "check_forward_refs.py",
+        "後の Day で定義する名前を前の Day で使っていないか",
+    ),
 )
 
 

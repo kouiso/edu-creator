@@ -37,3 +37,13 @@ qa:
   tech_terms: [Flask, Jinja, SQLAlchemy, Flask-Migrate, Flask-Login, Flask-WTF, Bootstrap, SQLite, PostgreSQL, Poetry, Render, Git, GitHub,
     API, ORM, CLI, CRUD, CSRF, CDN, DNS, HTTP, URL, ミドルウェア, スキーマ, マイグレーション, デプロイ, ルーティング, テンプレート, Blueprint, セッション, 仮想環境,
     デコレータ, インスタンス, モジュール, パッケージ, 例外, 外部キー, トランザクション, インデックス, リレーション]
+  # トップレベル（字下げ無し）の定義だけ。メソッドや関数の中のローカルな名前は、同じ名前でも別物なので数えない
+  def_patterns:
+    - '^def\s+([A-Za-z_]\w*)\s*\('
+    - '^class\s+([A-Za-z_]\w*)\b'
+    - '^([A-Za-z_]\w*)\s*(?::[^=]+)?=[^=]'
+  # import で入る名前も、その Day で使えるようになる名前として数える。捕獲群1は名前の並び
+  import_patterns:
+    - '^from\s+[\w.]+\s+import\s+\(([^)]*)\)'
+    - '^from\s+[\w.]+\s+import\s+([^(\n#]+)'
+    - '^import\s+([^\n#]+)'

@@ -92,6 +92,18 @@ Flask 版の `check_day_budget.py` は見積もりの表（`day-budget.json`）�
   写経の上限値は Day21（232）と Day27（217）だけが 200 を超えた
 - Next.js 版（報告だけ）: 写経の上限値は 0〜2,945 行で、30日中26日が 200 を超えた。ファイルは Day07 が 7、Day26 が 12。プランの G9 の裏づけ
 
+## 新しく書いた検査: forward-refs（前方参照。R-5・G6）
+
+後の Day で初めて定義（か import）する名前を、前の Day の写経のコードで使っていないかを見る。
+名前の有効範囲は書き込み先のファイルごとに分け、トップレベルの定義だけを数える。属性・キーワード引数の名前（`name=`）と、
+ブロックの中でローカルに作った名前は使用に数えない。教材全体を1つの名前空間で見た最初の版は、redmine で 17〜90 件、
+task-app で 662〜997 件の誤検出を出したので、この絞り方にした。了承は `qa.forward_refs_approved`（「ファイル: 名前」と理由）。
+
+実測（2026-11-08）:
+- Flask 版: 1件。Day08 の `app/__init__.py` が Day12 で書く `_postgres_url` を呼ぶ。本文は「この行まで来ない」と説明して意図して置いている。
+  R-5（0件）に反するので、直すか了承するかはユーザーの判断（プランの U-5）
+- Next.js 版: 0件
+
 共有の部品: `markdown_scan.py`（両方で同じ）、`fence_roles.py`、`curriculum_blocks.py`（`code_langs`・`real_prefixes`・
 `real_root_files`・`real_root_files_manifest` を `qa` から受け取る。書き込み先の目印は両スタックの書き方を全部受ける）。
 

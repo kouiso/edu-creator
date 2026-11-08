@@ -60,8 +60,15 @@ CHECKS: tuple[CheckDef, ...] = (
     CheckDef(
         "visualization", "check_visualization.py", "Step ごとの図・表・スクショ", per_file=True
     ),
-    CheckDef("comprehension", "check_comprehension.py", "専門用語の初出の注釈と確認ポイント", per_file=True),
-    CheckDef("tech-stack", "check_tech_stack.py", "技術の範囲（禁止のライブラリ・書き方）", per_file=True),
+    CheckDef(
+        "comprehension",
+        "check_comprehension.py",
+        "専門用語の初出の注釈と確認ポイント",
+        per_file=True,
+    ),
+    CheckDef(
+        "tech-stack", "check_tech_stack.py", "技術の範囲（禁止のライブラリ・書き方）", per_file=True
+    ),
 )
 
 

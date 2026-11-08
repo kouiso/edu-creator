@@ -72,3 +72,7 @@ jobs:
       # 5 件が恒常的に失敗する（本 PR の対象外）。当該モジュールのみ除外し、残る全テストを強制する。
       - name: Pytest
         run: bash scripts/ci.sh test
+
+      # E-8: 録画した実行で Step を1つ作り切る E2E。LLM を呼ばない（CI にサブスクのログインを置かない。E-9）
+      - name: e2e-fixture
+        run: uv run pytest tests/educreator/test_e2e_fixture.py -q

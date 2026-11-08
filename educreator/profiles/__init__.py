@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import cache
+from typing import Any
 from pathlib import Path
 
 import yaml
@@ -30,6 +31,10 @@ class QaConfig(BaseModel):
     gui_services: list[str] = Field(default_factory=list)
     # 要素の中の改行を空白に畳んで描画する JSX の言語（check_ja_line_break。無ければ何も見ない）
     jsx_langs: list[str] = Field(default_factory=list)
+    # 初出で注釈を求める専門用語（check_comprehension）
+    tech_terms: list[str] = Field(default_factory=list)
+    # 技術の範囲（check_tech_stack）。forbidden: [[正規表現, 表示名]]、expect: [正規表現]、文面（msg_*）
+    tech_stack: dict[str, Any] = Field(default_factory=dict)
     # 以下は教材で決まる値（course-spec の qa に書く）
     # 所要時間の表を持たない Day（check_step_time）
     no_table_days: list[int] = Field(default_factory=list)

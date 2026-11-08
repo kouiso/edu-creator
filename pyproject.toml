@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "AI-powered educational material generator using CrewAI (GPT + Gemini Flash)"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { file = "LICENSE" }
 authors = [
     { name = "kouiso", email = "kouiso@example.com" }
 ]

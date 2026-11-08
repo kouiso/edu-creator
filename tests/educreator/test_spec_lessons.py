@@ -152,3 +152,16 @@ def test_spec_qa_overrides_are_validated():
     CourseSpec.model_validate({**BASE, "qa": {"gui_services": ["Render"]}})
     with pytest.raises(ValidationError, match="知らないキー"):
         CourseSpec.model_validate({**BASE, "qa": {"gui_service": ["typo"]}})
+
+
+def test_license_is_all_rights_reserved_everywhere():
+    # E-9 ③: LICENSE・pyproject・README の3か所が All Rights Reserved で一致する（U-17）
+    import tomllib
+
+    lic = (ROOT / "LICENSE").read_text(encoding="utf-8")
+    assert "All rights reserved" in lic and "No permission is granted" in lic
+    meta = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    assert meta["license"] == {"file": "LICENSE"}
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    section = readme.split("## 📄 License", 1)[1]
+    assert "All Rights Reserved" in section and "\nMIT\n" not in section

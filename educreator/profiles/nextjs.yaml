@@ -1,0 +1,13 @@
+name: nextjs
+language: typescript
+filepath_comment:
+  .ts: "// filepath: {path}"
+  .tsx: "// filepath: {path}"
+  .js: "// filepath: {path}"
+  .css: "/* filepath: {path} */"
+  .prisma: "// filepath: {path}"
+install: ["npm", "ci"]
+start: ["npm", "run", "dev", "--", "--port", "3000"]
+test: ["npm", "test"]
+url: "http://127.0.0.1:3000"
+ready_path: "/"

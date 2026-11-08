@@ -1,0 +1,12 @@
+name: flask
+language: python
+filepath_comment:
+  .py: "# filepath: {path}"
+  .html: "{# filepath: {path} #}"
+  .css: "/* filepath: {path} */"
+  .toml: "# filepath: {path}"
+install: ["poetry", "install"]
+start: ["poetry", "run", "flask", "run", "--port", "5000"]
+test: ["poetry", "run", "pytest"]
+url: "http://127.0.0.1:5000"
+ready_path: "/login"

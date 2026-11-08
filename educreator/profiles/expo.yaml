@@ -1,0 +1,13 @@
+name: expo
+language: typescript
+filepath_comment:
+  .ts: "// filepath: {path}"
+  .tsx: "// filepath: {path}"
+  .js: "// filepath: {path}"
+  .sql: "-- filepath: {path}"
+install: ["npm", "ci"]
+# リプレイと撮影は Expo の web で行う（§10 の号砲 #6）
+start: ["npx", "expo", "start", "--web", "--port", "8081"]
+test: ["npm", "test"]
+url: "http://127.0.0.1:8081"
+ready_path: "/"

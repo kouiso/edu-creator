@@ -115,4 +115,5 @@ task-app で 662〜997 件の誤検出を出したので、この絞り方にし
 | Next.js 版だけ | complete-code・complete-section-fences・false-success・procedure-order・tag-balance・unclosed-screen・version-split・scaffold-src-sync・scaffold-curriculum-alignment | JSX 固有のもの（jsx-marker・tag-balance）は nextjs の profile だけで有効にする |
 | Flask 版だけ | day-trees・scaffold-zip-sync（day-budget は本文から実測する budget に置き換えた） | リプレイ（A4）・梱包（A8）と一緒に |
 | まだ無い | 想定エラーの枠（G12）・テンプレートのクラス名の存在（R3a の配布 CSS ができてから） | 新しく書く |
+| 章IDの命名に対応 | 教材のフォルダを読む検査の多く（`day[0-9][0-9]_*.md` を探す） | sns-app は章を `curriculum/<章ID>.md` に置き、連番を名前に入れない（D1-2）。course-spec の naming: chapter-id と chapters の並び順から対象のファイルを渡す形に変える。今は spec check だけが対応している |
 | 文章の検査 | run_writing_lint（両方で同じ。textlint の設定も1つにまとめる） | 辞書の置き場を `qa` に出す |

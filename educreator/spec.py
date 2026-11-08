@@ -38,9 +38,12 @@ class DayBudget(Strict):
 
 
 class Chapter(Strict):
+    # 並び順。naming が day なら Day の番号
     day: int = Field(ge=0)
     title: str
     file: str
+    # naming が chapter-id のときの章ID（ファイル名は <id>.md）
+    id: str | None = Field(default=None, pattern=r"^[a-z0-9][a-z0-9-]*$")
 
 
 class Distribution(Strict):
@@ -115,6 +118,8 @@ class CourseSpec(Strict):
         description="正解のコード（最終形のアプリ）のリポジトリのパス。spec の置き場からの相対"
     )
     material_dir: str
+    # 章ファイルの命名。day は dayNN_*.md、chapter-id は <章ID>.md（連番を名前に入れない教材）
+    naming: Literal["day", "chapter-id"] = "day"
     distribution: Distribution
     chapters: list[Chapter] = Field(default_factory=list)
     replay: Replay | None = None
@@ -147,6 +152,12 @@ class CourseSpec(Strict):
         over = [d for d in days if d > self.days]
         if over:
             raise ValueError(f"chapters に days（{self.days}）を超える day がある: {over}")
+        if self.naming == "chapter-id":
+            bad = [c.file for c in self.chapters if not c.id or c.file != f"{c.id}.md"]
+            if bad:
+                raise ValueError(
+                    f"naming が chapter-id なのに、file が <id>.md でない章がある: {bad}"
+                )
         return self
 
 
@@ -185,7 +196,11 @@ def check_chapters(spec: CourseSpec, base: Path) -> list[str]:
             problems.append(f"Day{c.day:02d}: タイトルが違う（spec: {c.title!r} / 本文: {h!r}）")
     listed = {c.file for c in spec.chapters}
     if mdir.is_dir() and spec.chapters:
-        for p in sorted(mdir.glob("day*.md")):
+        # chapter-id の命名では、章ファイルは直下の .md（README.md などの本文でない物は除く）
+        pattern = "day*.md" if spec.naming == "day" else "*.md"
+        for p in sorted(mdir.glob(pattern)):
+            if spec.naming == "chapter-id" and p.name == "README.md":
+                continue
             if p.name not in listed:
                 problems.append(f"{p.name} が chapters に無い")
     return problems

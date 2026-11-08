@@ -165,3 +165,32 @@ def test_license_is_all_rights_reserved_everywhere():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     section = readme.split("## 📄 License", 1)[1]
     assert "All Rights Reserved" in section and "\nMIT\n" not in section
+
+
+def test_chapter_id_naming(tmp_path):
+    mat = tmp_path / "curriculum"
+    mat.mkdir()
+    (mat / "README.md").write_text("# 置き場の説明\n", encoding="utf-8")
+    (mat / "expo-first-screen.md").write_text("# はじめての画面をスマホに出す\n", encoding="utf-8")
+    (mat / "orphan.md").write_text("# 表に無い章\n", encoding="utf-8")
+    data = {
+        **BASE,
+        "stack_profile": "expo",
+        "material_dir": "curriculum",
+        "naming": "chapter-id",
+        "chapters": [
+            {
+                "day": 10,
+                "id": "expo-first-screen",
+                "title": "はじめての画面",
+                "file": "expo-first-screen.md",
+            }
+        ],
+        "days": 31,
+    }
+    spec = CourseSpec.model_validate(data)
+    assert check_chapters(spec, tmp_path) == ["orphan.md が chapters に無い"]
+    with pytest.raises(ValidationError, match=r"<id>\.md"):
+        CourseSpec.model_validate(
+            {**data, "chapters": [{"day": 1, "id": "a", "title": "x", "file": "b.md"}]}
+        )

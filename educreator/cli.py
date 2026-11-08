@@ -1,6 +1,6 @@
 """edu-creator 3.0 のコマンド。
 
-今ある段: auth（login / status）、spec（check）、check（教材の検査）、lessons（check）。
+今ある段: auth（login / status）、spec（check）、check（教材の検査）、replay（写経リプレイ）、lessons（check）。
 plan・design・stage・write・gate・package などは WBS の順（A3〜A13）で足す。
 """
 
@@ -91,6 +91,44 @@ def _cmd_check(args: argparse.Namespace) -> int:
     return 1 if failed else 0
 
 
+def _cmd_replay(args: argparse.Namespace) -> int:
+    from pydantic import ValidationError
+
+    from educreator.profiles import load_profile
+    from educreator.replay import DaySource, parse_days, replay_day
+    from educreator.spec import load_spec
+
+    spec_path = Path(args.spec)
+    try:
+        spec = load_spec(spec_path)
+        if spec.replay is None:
+            raise ValueError(f"{spec_path} に replay が無い")
+        days = parse_days(args.days or f"1-{spec.days}", spec.days)
+    except (ValidationError, ValueError) as e:
+        print(f"エラー: {e}", file=sys.stderr)
+        return 2
+    profile = load_profile(spec.stack_profile)
+    rp = spec.replay
+    src = DaySource(rp.kind, spec_path.parent / rp.root, rp.pattern)
+    failed = 0
+    for d in days:
+        r = replay_day(
+            profile,
+            src,
+            d,
+            rp.paths.get(d),
+            install=rp.install and not args.no_install,
+            setup=rp.setup,
+        )
+        print(f"{'OK  ' if r.ok else 'FAIL'} Day{d:02d}")
+        for s in r.steps:
+            if args.verbose or not r.ok:
+                print(f"     {s}")
+        failed += not r.ok
+    print(f"{len(days) - failed}/{len(days)} Day 通過")
+    return 1 if failed else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="edu-creator", description="教材を作る道具（edu-creator 3.0）")
     p.add_argument("--version", action="version", version=__version__)
@@ -124,6 +162,17 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--list", action="store_true", help="検査の一覧を出す")
     c.add_argument("-v", "--verbose", action="store_true", help="落ちた検査の出力を全部出す")
     c.set_defaults(func=_cmd_check)
+
+    rp = sub.add_parser(
+        "replay", help="Day ごとのツリーを入れて起動し、画面が返るかを確かめる（A4）"
+    )
+    rp.add_argument("--spec", default="course-spec.yaml")
+    rp.add_argument("--days", help="1-3,5 のように指定（省略で全 Day）")
+    rp.add_argument(
+        "--no-install", action="store_true", help="入れる段を飛ばす（入れ済みのツリー）"
+    )
+    rp.add_argument("-v", "--verbose", action="store_true")
+    rp.set_defaults(func=_cmd_replay)
 
     lessons = sub.add_parser("lessons", help="学び台帳を検査する（E-7）")
     lsub = lessons.add_subparsers(dest="lessons_cmd", required=True)

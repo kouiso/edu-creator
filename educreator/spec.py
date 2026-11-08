@@ -48,6 +48,28 @@ class Distribution(Strict):
     manifest_product: str | None = None
 
 
+class Replay(Strict):
+    """写経リプレイ（edu-creator replay）で Day のツリーを取り出す元と、Day ごとに確かめる道。"""
+
+    kind: Literal["git", "dirs"]
+    # git ならタグを持つリポジトリ、dirs なら Day ごとのフォルダの親。spec の置き場からの相対
+    root: str
+    # Day のツリーの名前。{nn} は2桁、{n} はそのままの Day 番号（例: day-{nn}-end、day{nn}）
+    pattern: str
+    install: bool = True
+    # 入れた後、起動の前に打つコマンド（学習者が本文で打つもの。例: .env を作る、DB を作る）。Day に依らず同じ
+    setup: list[list[str]] = Field(default_factory=list)
+    # {Day: {道: 期待する状態コード}}。ready_path（profile）は全 Day で 200 を見る
+    paths: dict[int, dict[str, int]] = Field(default_factory=dict)
+
+    @field_validator("pattern")
+    @classmethod
+    def _has_day(cls, v: str) -> str:
+        if "{nn}" not in v and "{n}" not in v:
+            raise ValueError("pattern に {nn} か {n} が無い")
+        return v
+
+
 class CourseSpec(Strict):
     spec_version: Literal[1] = 1
     name: str
@@ -61,6 +83,7 @@ class CourseSpec(Strict):
     material_dir: str
     distribution: Distribution
     chapters: list[Chapter] = Field(default_factory=list)
+    replay: Replay | None = None
     # 検査に渡す値の、教材ごとの上書き（stack profile の qa を上書きする。公開先のサービス名など教材で決まるもの）
     qa: dict[str, Any] = Field(default_factory=dict)
 

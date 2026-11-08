@@ -6,9 +6,9 @@ filepath_comment:
   .css: "/* filepath: {path} */"
   .toml: "# filepath: {path}"
 install: ["poetry", "install"]
-start: ["poetry", "run", "flask", "run", "--port", "5000"]
+start: ["poetry", "run", "flask", "run", "--port", "{port}"]
 test: ["poetry", "run", "pytest"]
-url: "http://127.0.0.1:5000"
+url: "http://127.0.0.1:{port}"
 ready_path: "/login"
 qa:
   code_langs: [python, py, html, jinja, toml, ini]

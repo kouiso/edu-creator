@@ -7,9 +7,9 @@ filepath_comment:
   .sql: "-- filepath: {path}"
 install: ["npm", "ci"]
 # リプレイと撮影は Expo の web で行う（§10 の号砲 #6）
-start: ["npx", "expo", "start", "--web", "--port", "8081"]
+start: ["npx", "expo", "start", "--web", "--port", "{port}"]
 test: ["npm", "test"]
-url: "http://127.0.0.1:8081"
+url: "http://127.0.0.1:{port}"
 ready_path: "/"
 qa:
   code_langs: [typescript, ts, tsx, javascript, js, jsx, sql]

@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from educreator.profiles import available_profiles
+from educreator.profiles import QaConfig, available_profiles
 
 
 class Strict(BaseModel):
@@ -61,6 +61,16 @@ class CourseSpec(Strict):
     material_dir: str
     distribution: Distribution
     chapters: list[Chapter] = Field(default_factory=list)
+    # 検査に渡す値の、教材ごとの上書き（stack profile の qa を上書きする。公開先のサービス名など教材で決まるもの）
+    qa: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("qa")
+    @classmethod
+    def _known_qa_keys(cls, v: dict[str, Any]) -> dict[str, Any]:
+        unknown = sorted(set(v) - set(QaConfig.model_fields))
+        if unknown:
+            raise ValueError(f"qa に知らないキーがある: {unknown}")
+        return v
 
     @field_validator("stack_profile")
     @classmethod

@@ -1,0 +1,50 @@
+# 教材の検査の統合（WBS の A3）
+
+両教材（Flask 版と Next.js 版）で育った検査スクリプトを、`educreator/checks/qa/` の1つの版にまとめる。
+検査のロジックは1本にし、スタックで変わる値は stack profile の `qa`（`educreator/profiles/*.yaml`）に、
+教材で変わる値（公開先のサービス名など）は `course-spec.yaml` の `qa` に置く。
+
+```bash
+edu-creator check --list                      # 検査の一覧
+edu-creator check --spec course-spec.yaml     # 全部
+edu-creator check --spec course-spec.yaml tone no-skip -v
+```
+
+検査は環境変数 `EDU_CREATOR_QA_JSON` で値を受け取る。値が無いと動かない（別のスタックの規則で黙って緑にしないため）。
+
+## 取り込みの決まり
+
+1. 取り込み元は、両方にあれば新しく直したほう（今回は Flask 版。Next.js 版から移したときに、値を定数に出す直しが入っていた）
+2. スタックの名前・置き場・言語が書かれた定数は `qa` に出す。コメントの中のスタック名も消す（E-4 のテストが `educreator/` 全体を見る）
+3. 取り込み元の自己テストは `tests/educreator/qa/selftest_*.py` に名前を変えて持ち、`tests/educreator/test_qa_selftests.py` が1本ずつ動かす
+4. 取り込んだら、**両教材の今の本文で、取り込み元と rc と出力が一致する**ことを確かめる（下の表）
+
+## 1バッチ目（2026-11-08）
+
+| 検査の ID | 取り込み元 | 出した値 | 一致（Flask 版 / Next.js 版の本文） |
+|---|---|---|---|
+| step-length | 両方で同じ | — | rc・出力とも一致 / 一致 |
+| step-ref | 両方で同じ | — | 一致 / 一致 |
+| tone | 両方で同じ | — | 一致 / 一致 |
+| unused-image | 両方で同じ | — | 一致 / 一致 |
+| variants | 両方で同じ | — | 一致 / 一致 |
+| setext-heading | コメントだけ違う | — | 一致 / 一致 |
+| quiz | コメントだけ違う | — | 一致 / 一致 |
+| terms | コメントだけ違う | — | 一致 / 一致 |
+| fence-roles | Flask 版 | （curriculum_blocks の値を使う） | 一致 / 一致 |
+| crossref | Flask 版 | `crossref_ignore` | 一致 / 一致 |
+| no-skip | Flask 版 | `gui_services` | 一致 / 一致 |
+| code-completeness | Flask 版 | `code_langs` | 一致 / 一致 |
+
+共有の部品: `markdown_scan.py`（両方で同じ）、`fence_roles.py`、`curriculum_blocks.py`（`code_langs`・`real_prefixes`・
+`real_root_files`・`real_root_files_manifest` を `qa` から受け取る。書き込み先の目印は両スタックの書き方を全部受ける）。
+
+## 残り（次のバッチ）
+
+| 種類 | 検査 | 統合で要ること |
+|---|---|---|
+| 両方にあり中身が違う | anchor・comprehension・step-time・tech-stack・visualization・why・zip-reference・sale-package | 差を読み、スタックの語の一覧（comprehension の技術語、tech-stack の禁止ライブラリ）を `qa` に出す |
+| Next.js 版だけ | complete-code・complete-section-fences・false-success・ja-latin-space・ja-line-break・procedure-order・tag-balance・unclosed-screen・version-split・scaffold-src-sync・scaffold-curriculum-alignment | JSX 固有のもの（jsx-marker・tag-balance）は nextjs の profile だけで有効にする |
+| Flask 版だけ | day-budget（Day 予算の4軸）・day-trees・scaffold-zip-sync | day-budget は `course-spec.yaml` の `budget` を上限に使う |
+| まだ無い | 想定エラーの枠（G12）・テンプレートのクラス名の存在（R3a の配布 CSS ができてから） | 新しく書く |
+| 文章の検査 | run_writing_lint（両方で同じ。textlint の設定も1つにまとめる） | 辞書の置き場を `qa` に出す |

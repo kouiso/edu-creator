@@ -11,3 +11,7 @@ start: ["npm", "run", "dev", "--", "--port", "3000"]
 test: ["npm", "test"]
 url: "http://127.0.0.1:3000"
 ready_path: "/"
+qa:
+  code_langs: [typescript, ts, tsx, javascript, js, jsx]
+  real_prefixes: [src/, prisma/, scripts/]
+  crossref_ignore: [npm, src, app, page.tsx, layout.tsx, README.md]

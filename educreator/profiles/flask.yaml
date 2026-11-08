@@ -10,3 +10,7 @@ start: ["poetry", "run", "flask", "run", "--port", "5000"]
 test: ["poetry", "run", "pytest"]
 url: "http://127.0.0.1:5000"
 ready_path: "/login"
+qa:
+  code_langs: [python, py, html, jinja, toml, ini]
+  real_prefixes: [app/, tests/, migrations/]
+  crossref_ignore: [poetry, flask, app, __init__.py, base.html, README.md]

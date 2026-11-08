@@ -135,3 +135,20 @@ def test_no_hardcoded_stack_names_outside_profiles():
             if _FORBIDDEN.search(line):
                 hits.append(f"{p.relative_to(ROOT)}:{n}: {line.strip()}")
     assert hits == []
+
+
+def test_cli_check_runs_selected_checks_on_material(tmp_path, capsys):
+    p = _spec_dir(tmp_path)
+    assert main(["check", "--spec", str(p), "--list"]) == 0
+    assert "no-skip" in capsys.readouterr().out
+    # 書式の整った2日分は見出しと参照の検査を通る。スクショのフォルダが無ければ unused-image は落ちる
+    assert main(["check", "--spec", str(p), "setext-heading", "step-ref"]) == 0
+    assert main(["check", "--spec", str(p), "unused-image"]) == 1
+    assert "画像がありません" in capsys.readouterr().out
+    assert main(["check", "--spec", str(p), "nope"]) == 2
+
+
+def test_spec_qa_overrides_are_validated():
+    CourseSpec.model_validate({**BASE, "qa": {"gui_services": ["Render"]}})
+    with pytest.raises(ValidationError, match="知らないキー"):
+        CourseSpec.model_validate({**BASE, "qa": {"gui_service": ["typo"]}})

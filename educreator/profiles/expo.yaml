@@ -11,3 +11,7 @@ start: ["npx", "expo", "start", "--web", "--port", "8081"]
 test: ["npm", "test"]
 url: "http://127.0.0.1:8081"
 ready_path: "/"
+qa:
+  code_langs: [typescript, ts, tsx, javascript, js, jsx, sql]
+  real_prefixes: [app/, src/, supabase/]
+  crossref_ignore: [npm, npx, app, src, README.md]

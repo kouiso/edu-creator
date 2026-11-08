@@ -1,6 +1,6 @@
 """edu-creator 3.0 のコマンド。
 
-今ある段: auth（login / status）、spec（check）、lessons（check）。
+今ある段: auth（login / status）、spec（check）、check（教材の検査）、lessons（check）。
 plan・design・stage・write・gate・package などは WBS の順（A3〜A13）で足す。
 """
 
@@ -57,6 +57,37 @@ def _cmd_lessons(args: argparse.Namespace) -> int:
     return 1 if problems else 0
 
 
+def _cmd_check(args: argparse.Namespace) -> int:
+    from pydantic import ValidationError
+
+    from educreator import checks
+    from educreator.spec import load_spec
+
+    if args.list:
+        for c in checks.CHECKS:
+            print(f"{c.id:<20} {c.summary}")
+        return 0
+    spec_path = Path(args.spec)
+    try:
+        spec = load_spec(spec_path)
+        config = checks.qa_config(spec.stack_profile, spec.qa, spec_path.parent / spec.app_repo)
+        selected = [checks.get(i) for i in args.ids] if args.ids else list(checks.CHECKS)
+    except (ValidationError, ValueError, KeyError) as e:
+        print(f"エラー: {e}", file=sys.stderr)
+        return 2
+    target = spec_path.parent / spec.material_dir
+    failed = 0
+    for c in selected:
+        r = checks.run_check(c, target, config)
+        print(f"{'OK  ' if r.ok else 'FAIL'} {c.id}")
+        if not r.ok:
+            failed += 1
+            if args.verbose or len(selected) == 1:
+                print(r.output)
+    print(f"{len(selected) - failed}/{len(selected)} 件通過")
+    return 1 if failed else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="edu-creator", description="教材を作る道具（edu-creator 3.0）")
     p.add_argument("--version", action="version", version=__version__)
@@ -83,6 +114,13 @@ def build_parser() -> argparse.ArgumentParser:
     sc = ssub.add_parser("check", help="スキーマと、章立てと実ファイルの一致を確かめる")
     sc.add_argument("path", nargs="?", default="course-spec.yaml")
     s.set_defaults(func=_cmd_spec)
+
+    c = sub.add_parser("check", help="教材を検査する（A3。stack profile の qa で切り替える）")
+    c.add_argument("ids", nargs="*", help="検査の ID（省略で全部）")
+    c.add_argument("--spec", default="course-spec.yaml")
+    c.add_argument("--list", action="store_true", help="検査の一覧を出す")
+    c.add_argument("-v", "--verbose", action="store_true", help="落ちた検査の出力を全部出す")
+    c.set_defaults(func=_cmd_check)
 
     lessons = sub.add_parser("lessons", help="学び台帳を検査する（E-7）")
     lsub = lessons.add_subparsers(dest="lessons_cmd", required=True)

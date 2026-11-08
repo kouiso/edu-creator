@@ -55,6 +55,11 @@ CHECKS: tuple[CheckDef, ...] = (
     CheckDef(
         "ja-line-break", "check_ja_line_break.py", "画面に出る日本語の文の、JSX の中での途中改行"
     ),
+    CheckDef("step-time", "check_step_time.py", "所要時間の表の合計と本文の分数の一致"),
+    CheckDef("why", "check_why.py", "写経のコードブロックの前に理由があるか"),
+    CheckDef(
+        "visualization", "check_visualization.py", "Step ごとの図・表・スクショ", per_file=True
+    ),
 )
 
 

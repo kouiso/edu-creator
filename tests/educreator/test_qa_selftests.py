@@ -20,6 +20,7 @@ QA_TESTS = sorted((Path(__file__).parent / "qa").glob("selftest_*.py"))
 ORIGIN = {
     "selftest_check_ja_latin_space": ("nextjs", {"gui_services": ["Vercel"]}),
     "selftest_check_ja_line_break": ("nextjs", {"gui_services": ["Vercel"]}),
+    "selftest_check_why": ("nextjs", {"gui_services": ["Vercel"]}),
 }
 
 

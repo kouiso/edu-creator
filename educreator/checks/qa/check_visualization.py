@@ -1,0 +1,342 @@
+#!/usr/bin/env python3
+"""視覚化チェックスクリプト
+- 表のデータ行、または構造化したトラブル項目が4つ以上あるか
+- スクショ位置が3箇所以上あるか
+- 同一ファイル内で同じ画像を貼り回していないか
+- Mermaid図が適切か（該当Dayのみ）
+- 旧式のスクリーンショット目印が残っていないか
+
+## 同一日での画像重複について（既定は FAIL）
+
+「スクショ位置3箇所以上」という下限だけを機械で要求すると、同じ画像を3回貼って
+数を満たす逃げ道が残る。実際にこの corpus では Step 3 の結果として貼られた画像が
+Step 9 の完成形と同じになっている箇所があり、買い手から見れば「Step ごとに
+撮っていない」と分かる。そのため「3箇所が別々の画像であること」も検査する。
+
+作り始めた時点では corpus に重複が残っていたので既定を WARNING にしていた。いまは
+36本すべてで同一ファイル内の重複が0件になったので、既定を FAIL へ上げた。警告のまま
+置いておくと、検査は完成しているのにゲートが素通りする。防ぐために作った退行が、
+黙って戻ってこられる状態になる。
+
+撮り直しの途中で一時的に警告へ落としたいときだけ、次のどちらかを使う。
+
+  1. 環境変数: CURRICULUM_QA_WARN_ON_DUPLICATE_IMAGE=1
+  2. CLI フラグ: python3 check_visualization.py --warn-on-duplicate-image <file>
+"""
+
+import glob
+import os
+import posixpath
+import re
+import sys
+
+# 重複判定を WARNING へ落とすための環境変数名。既定は FAIL なので、撮り直しの
+# 途中で一時的に緩めたいときだけ立てる。
+WARN_ON_DUPLICATE_IMAGE_ENV = 'CURRICULUM_QA_WARN_ON_DUPLICATE_IMAGE'
+
+# 重複を数える画像。スクショ位置の判定に使うパターンと同じ範囲に揃えてある
+# （「3箇所が別々の画像か」を見る検査なので、母集団がずれると意味が変わる）。
+IMAGE_LINK_PATTERN = r'!\[[^\]]*\]\(([^)]+)\)'
+SCREENSHOT_IMAGE_PATTERNS = (
+    r'\.png$',
+    r'\.jpg$',
+    r'screenshot',
+)
+
+MIN_STRUCTURED_ITEMS = 4
+TROUBLESHOOTING_SECTION_HEADING = 'よくあるエラー'
+
+# 旧式の作業目印。執筆時の「ここにスクショ」という置き場所で、撤去済みのはずが
+# 本文へ残るとそのまま PDF に印字される。スクショ位置の一部として数えていた検知は、
+# 目印が無い前提の今、出現そのものを FAIL とする検査へ置き換えた（issue #415）。
+LEGACY_SCREENSHOT_MARKER = re.compile(r'【スクリーンショット[^】]*】')
+
+
+def normalize_image_target(target):
+    """同じファイルを指すリンクを1つの綴りへ寄せる。
+
+    `./screenshots/x.png` と `screenshots/x.png` と `screenshots/../screenshots/x.png` は
+    同じ1枚を指す。素の文字列で数えると別物に見えるので、**同じ画像を綴り違いで3回貼れば
+    「スクショ位置3箇所」を満たしつつ重複0で通ってまう**。数える前に寄せる。
+    外部 URL は寄せる意味が無いのでそのまま返す。
+    """
+    if "://" in target:
+        return target
+    return posixpath.normpath(target)
+
+
+def collect_screenshot_images(content):
+    """本文中の画像リンクから、スクショとして数える画像パスを順に返す。"""
+    images = []
+    for path in re.findall(IMAGE_LINK_PATTERN, content):
+        target = path.split()[0] if path.split() else path
+        if any(re.search(p, target, re.IGNORECASE) for p in SCREENSHOT_IMAGE_PATTERNS):
+            images.append(normalize_image_target(target))
+    return images
+
+
+def find_duplicate_images(content):
+    """同一ファイル内で2回以上参照されている画像を (パス, 回数) の昇順リストで返す。"""
+    counts = {}
+    for path in collect_screenshot_images(content):
+        counts[path] = counts.get(path, 0) + 1
+    return sorted((path, n) for path, n in counts.items() if n > 1)
+
+
+def without_fenced_code(content):
+    """コード例の見出しやラベルを教材本文の構造として数えない。"""
+    return re.sub(r'(?ms)^(`{3,}|~{3,}).*?^\1\s*$', '', content)
+
+
+def troubleshooting_entries(content):
+    """「よくあるエラー」節の全幅項目数と構造エラーを返す。
+
+    表を使わない場合も、各項目を見出し・原因・解決方法に分ければ読み手は
+    エラーから対処へたどれる。ラベルの数だけでは空欄や別項目への混入を見逃すため、
+    各 H4 の中で原因と解決方法がこの順に1つずつあり、本文も空でないことを確かめる。
+    """
+    visible = without_fenced_code(content)
+    section_match = re.search(
+        rf'(?ms)^##\s+{re.escape(TROUBLESHOOTING_SECTION_HEADING)}\s*$\n(.*?)(?=^##\s|\Z)',
+        visible,
+    )
+    if not section_match:
+        return 0, []
+
+    section = section_match.group(1)
+    heading_matches = list(re.finditer(r'(?m)^####\s+(.+?)\s*$', section))
+    label_pattern = re.compile(r'(?m)^\*\*(原因|解決方法)\*\*\s*:\s*(.*)$')
+    errors = []
+    entry_spans = []
+
+    for heading in heading_matches:
+        next_heading = re.search(r'(?m)^#{1,4}\s+', section[heading.end():])
+        block_end = heading.end() + next_heading.start() if next_heading else len(section)
+        entry_spans.append((heading.end(), block_end))
+        block = section[heading.end():block_end]
+        labels = list(label_pattern.finditer(block))
+        name = heading.group(1)
+        if [match.group(1) for match in labels] != ['原因', '解決方法']:
+            errors.append(f'{name}: 原因と解決方法をこの順に1つずつ書いてください')
+            continue
+        for label_index, label in enumerate(labels):
+            value_end = labels[label_index + 1].start() if label_index + 1 < len(labels) else len(block)
+            value = label.group(2) + block[label.end():value_end]
+            # Markdown の装飾と句読点だけでは実体とみなさない。
+            if not re.search(r'[A-Za-z0-9\u3040-\u30ff\u3400-\u9fff]', value):
+                errors.append(f'{name}: {label.group(1)}が空です')
+
+    # H4 に属さないラベルも欠けた見出しとして扱う。単純な件数下限だけでは、
+    # 見出しを消して原因と解決方法だけ残した退行が通ってしまう。
+    for label in label_pattern.finditer(section):
+        if not any(start <= label.start() < end for start, end in entry_spans):
+            errors.append('見出しのない原因・解決方法があります')
+            break
+
+    return len(heading_matches), errors
+
+
+# 画面写真を3箇所そろえられない日と、その理由。教材ごとの例外表で、course-spec の qa.screenshot_exempt に書く。
+#
+# 「スクショ位置3箇所以上」は「その日には新しいアプリの画面がある」を前提にしている。
+# 移植元（姉妹教材）では、デプロイの日（主役が管理画面で撮れない）や目次・ロードマップのような
+# 画面操作を持たない本をここへ理由つきで登録していた。
+#
+# 例外は Day を書いて実際に FAIL したときに、理由（8字以上）を付けて足す。理由を書けない免除は足さない。
+#
+# 免除しても図の下限（2枚）は課す。視覚化そのものを免除するわけではない。
+# ただしこの図の下限は「その日の教材が写真を撮れない」場合の代替要件なので、
+# 日次教材（dayNN）以外の本には課さない。図解の対象になる「今日の画面」が
+# そもそも存在しないため。
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _config import CONFIG  # noqa: E402
+
+# スクショの免除（ファイル名 → 理由）と mermaid を必須にする Day は教材で決まるので、course-spec の qa から受け取る
+SCREENSHOT_EXEMPT: dict[str, str] = dict(CONFIG.get("screenshot_exempt", {}))
+# Mermaid 図を必ず置く日（course-spec の qa.required_mermaid_days）。例: 状態遷移・ルーター・デプロイの日。
+# AGENTS.md の「Step ごとに視覚要素を最低1つ」は日を問わず掛かる（表・スクショの下限で見る）。
+REQUIRED_MERMAID_DAYS: frozenset[int] = frozenset(CONFIG.get("required_mermaid_days", []))
+MIN_MERMAID_WHEN_EXEMPT = 2
+
+
+def check_visualization(filepath, fail_on_duplicate_image=True):
+    """1本の教材を見て、表・写真・図・画像の重複を数える。違反があれば exit 1。
+
+    `fail_on_duplicate_image` の既定が True であることに意味がある。同じ画像を貼り回して
+    「スクショ3箇所以上」を満たす抜け道を塞ぐのがこの検査の目的なので、既定が False へ
+    戻ると検査は動いたままゲートだけが素通りする。撮り直しの途中で一時的に落としたい
+    ときだけ、呼び出し側（CLI フラグと環境変数）から False を渡す。
+    """
+    with open(filepath, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    # 表の数をカウント
+    table_pattern = r'\|.*\|.*\|'
+    tables = re.findall(table_pattern, content)
+    table_count = len([t for t in tables if '---' not in t])  # ヘッダー行を除く
+
+    # スクショ位置をカウント（複数パターンに対応）
+    # 1. 絵文字マーカー: 📸
+    # 2. Markdown画像リンク: ![...](./screenshots/...)
+    # 旧形式の【スクリーンショット】はここでは数えない。位置ではなく残存禁止の目印で、
+    # 下の LEGACY_SCREENSHOT_MARKER 検査が出現を FAIL にする。
+    screenshot_patterns = [
+        r'📸',
+        r'!\[.*?\]\(.*?\.png\)',
+        r'!\[.*?\]\(.*?\.jpg\)',
+        r'!\[.*?\]\(.*?screenshot.*?\)',
+    ]
+    # 重複を防ぐため行ベースでカウント（1行に複数パターンがマッチしても1件と数える）
+    lines_with_screenshots = set()
+    for i, line in enumerate(content.splitlines()):
+        for pattern in screenshot_patterns:
+            if re.search(pattern, line):
+                lines_with_screenshots.add(i)
+                break
+    screenshot_count = len(lines_with_screenshots)
+
+    # Mermaid図をカウント
+    mermaid_pattern = r'```mermaid'
+    mermaid_count = len(re.findall(mermaid_pattern, content))
+
+    duplicates = find_duplicate_images(content)
+    duplicate_count = len(duplicates)
+
+    print(f"表の数: {table_count}")
+    print(f"スクショ位置: {screenshot_count}")
+    print(f"Mermaid図: {mermaid_count}")
+    print(f"重複画像: {duplicate_count}")
+
+    errors = []
+
+    structured_count, structured_errors = troubleshooting_entries(content)
+    print(f"全幅トラブル項目: {structured_count}")
+
+    legacy_marker_lines = [
+        i + 1
+        for i, line in enumerate(content.splitlines())
+        if LEGACY_SCREENSHOT_MARKER.search(line)
+    ]
+    if legacy_marker_lines:
+        errors.append(
+            f"❌ 旧式のスクリーンショット目印が残っています"
+            f"（{len(legacy_marker_lines)}箇所: 行 {', '.join(map(str, legacy_marker_lines))}）"
+        )
+    else:
+        print("✅ 旧式のスクリーンショット目印なし")
+
+    if structured_errors:
+        errors.extend(f"❌ 全幅トラブル項目の構造が不正: {error}" for error in structured_errors)
+
+    if table_count < MIN_STRUCTURED_ITEMS and structured_count < MIN_STRUCTURED_ITEMS:
+        errors.append(
+            f"❌ 表のデータ行または全幅トラブル項目が不足"
+            f"（表 {table_count} / 全幅 {structured_count}、{MIN_STRUCTURED_ITEMS}以上）"
+        )
+    elif table_count < MIN_STRUCTURED_ITEMS:
+        if not structured_errors:
+            print("✅ 全幅トラブル項目の構造OK")
+    else:
+        print("✅ 表の数OK")
+
+    exempt_reason = SCREENSHOT_EXEMPT.get(os.path.basename(filepath))
+    if exempt_reason:
+        is_day_book = re.search(r'day\d+', os.path.basename(filepath).lower()) is not None
+        if is_day_book and mermaid_count < MIN_MERMAID_WHEN_EXEMPT:
+            errors.append(
+                f"❌ 写真の下限を免除しとる日やのに図が不足（{mermaid_count}/{MIN_MERMAID_WHEN_EXEMPT}以上）"
+            )
+        else:
+            print(f"✅ スクショ位置は免除（{exempt_reason}）")
+    elif screenshot_count < 3:
+        errors.append(f"❌ スクショ位置が不足（{screenshot_count}/3以上）")
+    else:
+        print("✅ スクショ位置OK")
+
+    if duplicates:
+        detail = '、'.join(f'{path}（{n}回）' for path, n in duplicates)
+        message = f"同一日で同じ画像を貼り回しています: {detail}"
+        if fail_on_duplicate_image:
+            errors.append(f"❌ {message}")
+        else:
+            # 撮り直しが終わるまでは落とさない。切り替え方は本ファイル冒頭の docstring 参照。
+            print(f"⚠️ {message}")
+            print(f"   （{WARN_ON_DUPLICATE_IMAGE_ENV}=1 または --warn-on-duplicate-image で警告に落とした状態）")
+    else:
+        print("✅ 画像の重複なし")
+
+    # Day番号を抽出
+    day_match = re.search(r'day(\d+)', filepath.lower())
+    if day_match:
+        day_num = int(day_match.group(1))
+        if day_num in REQUIRED_MERMAID_DAYS:
+            if mermaid_count == 0:
+                errors.append(f"❌ Day {day_num}にはMermaid図が必須")
+            else:
+                print(f"✅ Mermaid図あり（Day {day_num}は必須）")
+
+    if errors:
+        for error in errors:
+            print(error)
+        sys.exit(1)
+
+    print("✅ 視覚化チェックPASS")
+
+
+def duplicate_image_is_fatal(argv):
+    """重複を FAIL 扱いにするか。既定は FAIL で、明示的に落としたときだけ WARNING。"""
+    if '--warn-on-duplicate-image' in argv:
+        return False
+    # 落とす側を許可値で明示する。「これ以外は FAIL」にせんと、綴り間違い（`ture` 等）や
+    # 想定してへん値まで WARNING へ落ちて、落としたつもりのない人がゲートを失う。
+    # 大文字小文字と前後の空白は落としてから見る。
+    raw = os.environ.get(WARN_ON_DUPLICATE_IMAGE_ENV, '').strip().lower()
+    return raw not in ('1', 'true', 'yes')
+
+
+def collect_targets(target):
+    """ディレクトリを渡された場合は配下の教材 md を対象にする。
+
+    corpus 全体の重複状況を一度に見たい（撮り直しの進み具合を測る）ため、
+    他の corpus 系チェッカーと同じくディレクトリ引数を受ける。
+    """
+    if not os.path.isdir(target):
+        return [target]
+    patterns = ('day[0-9][0-9]_*.md', 'appendix_*.md')
+    files = []
+    for pattern in patterns:
+        files.extend(glob.glob(os.path.join(target, pattern)))
+    return sorted(files)
+
+
+def main(argv):
+    fail_on_duplicate_image = duplicate_image_is_fatal(argv)
+    args = [a for a in argv if a != '--warn-on-duplicate-image']
+    if len(args) < 1:
+        print("使用法: python check_visualization.py [--warn-on-duplicate-image] <filepath|dir>")
+        return 1
+
+    targets = collect_targets(args[0])
+    if not targets:
+        print(f"❌ 対象ファイルが見つかりません: {args[0]}")
+        return 1
+
+    failed = []
+    for target in targets:
+        if len(targets) > 1:
+            print(f"\n--- {target} ---")
+        try:
+            check_visualization(target, fail_on_duplicate_image=fail_on_duplicate_image)
+        except SystemExit as exc:
+            if exc.code:
+                failed.append(target)
+
+    if len(targets) > 1:
+        print(f"\n対象 {len(targets)} 件 / FAIL {len(failed)} 件")
+        for target in failed:
+            print(f"  ❌ {target}")
+    return 1 if failed else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

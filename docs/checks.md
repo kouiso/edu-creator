@@ -46,6 +46,14 @@ edu-creator check --spec course-spec.yaml tone no-skip -v
 取り込まなかったもの: procedure-order（tRPC のルーターの置き場を前提にしている）、false-success・version-split
 （JSX のタグ検査と TypeScript のスナップショットに依る。nextjs の profile 専用として次のバッチで扱う）。
 
+## 3バッチ目（2026-11-08）
+
+| 検査の ID | 取り込み元 | 出した値 | 一致（Flask 版 / Next.js 版の本文） |
+|---|---|---|---|
+| step-time | Flask 版 | `no_table_days`（教材の値） | 一致 / 一致（Next.js 版は `[1, 2, 3, 4]`） |
+| why | Next.js 版（「完成コード」の節を除く処理を持つ上位互換） | `code_langs` | 一致 / 一致 |
+| visualization | Flask 版 | `screenshot_exempt`・`required_mermaid_days`（教材の値） | 一致 / 一致（Next.js 版は免除4件・mermaid 7日） |
+
 共有の部品: `markdown_scan.py`（両方で同じ）、`fence_roles.py`、`curriculum_blocks.py`（`code_langs`・`real_prefixes`・
 `real_root_files`・`real_root_files_manifest` を `qa` から受け取る。書き込み先の目印は両スタックの書き方を全部受ける）。
 
@@ -53,7 +61,7 @@ edu-creator check --spec course-spec.yaml tone no-skip -v
 
 | 種類 | 検査 | 統合で要ること |
 |---|---|---|
-| 両方にあり中身が違う | anchor・comprehension・step-time・tech-stack・visualization・why・zip-reference・sale-package | 差を読み、スタックの語の一覧（comprehension の技術語、tech-stack の禁止ライブラリ）を `qa` に出す |
+| 両方にあり中身が違う | anchor・comprehension・tech-stack・zip-reference・sale-package | 差を読み、スタックの語の一覧（comprehension の技術語、tech-stack の禁止ライブラリ）を `qa` に出す |
 | Next.js 版だけ | complete-code・complete-section-fences・false-success・procedure-order・tag-balance・unclosed-screen・version-split・scaffold-src-sync・scaffold-curriculum-alignment | JSX 固有のもの（jsx-marker・tag-balance）は nextjs の profile だけで有効にする |
 | Flask 版だけ | day-budget（Day 予算の4軸）・day-trees・scaffold-zip-sync | day-budget は `course-spec.yaml` の `budget` を上限に使う |
 | まだ無い | 想定エラーの枠（G12）・テンプレートのクラス名の存在（R3a の配布 CSS ができてから） | 新しく書く |

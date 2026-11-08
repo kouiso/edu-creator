@@ -30,6 +30,13 @@ class QaConfig(BaseModel):
     gui_services: list[str] = Field(default_factory=list)
     # 要素の中の改行を空白に畳んで描画する JSX の言語（check_ja_line_break。無ければ何も見ない）
     jsx_langs: list[str] = Field(default_factory=list)
+    # 以下は教材で決まる値（course-spec の qa に書く）
+    # 所要時間の表を持たない Day（check_step_time）
+    no_table_days: list[int] = Field(default_factory=list)
+    # スクショを免除する教材のファイル名と理由（check_visualization）
+    screenshot_exempt: dict[str, str] = Field(default_factory=dict)
+    # mermaid の図を必須にする Day（check_visualization）
+    required_mermaid_days: list[int] = Field(default_factory=list)
 
 
 class StackProfile(BaseModel):

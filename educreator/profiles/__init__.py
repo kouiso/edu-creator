@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from functools import cache
-from typing import Any
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field

@@ -69,6 +69,9 @@ CHECKS: tuple[CheckDef, ...] = (
     CheckDef(
         "tech-stack", "check_tech_stack.py", "技術の範囲（禁止のライブラリ・書き方）", per_file=True
     ),
+    CheckDef(
+        "anchor", "check_anchor.py", "コードブロックの書き込み先（続き・実在・読み比べ用の目印）"
+    ),
 )
 
 

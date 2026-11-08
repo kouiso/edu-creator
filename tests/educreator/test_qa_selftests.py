@@ -21,6 +21,18 @@ ORIGIN = {
     "selftest_check_ja_latin_space": ("nextjs", {"gui_services": ["Vercel"]}),
     "selftest_check_ja_line_break": ("nextjs", {"gui_services": ["Vercel"]}),
     "selftest_check_why": ("nextjs", {"gui_services": ["Vercel"]}),
+    "selftest_check_anchor_nextjs": ("nextjs", {"real_root_files": ["vitest.config.ts"]}),
+    "selftest_check_anchor_flask": (
+        "flask",
+        {"real_root_files_manifest": "material/_meta/scaffold-manifest.json"},
+    ),
+}
+
+# 完成版のリポジトリに実在するファイルを見る自己テスト。取り込み元を edu-creator の隣に clone してあるときだけ動かす
+_SIBLINGS = Path(__file__).resolve().parents[3]
+NEEDS_REPO = {
+    "selftest_check_anchor_nextjs": _SIBLINGS / "task-app",
+    "selftest_check_anchor_flask": _SIBLINGS / "redmine-clone",
 }
 
 
@@ -28,7 +40,10 @@ ORIGIN = {
 def test_vendored_selftest(path, tmp_path):
     env = dict(os.environ)
     profile, overrides = ORIGIN.get(path.stem, ("flask", {"gui_services": ["Render"]}))
-    env["EDU_CREATOR_QA_JSON"] = json.dumps(qa_config(profile, overrides, tmp_path))
+    repo = NEEDS_REPO.get(path.stem, tmp_path)
+    if path.stem in NEEDS_REPO and not (repo / ".git").exists():
+        pytest.skip(f"取り込み元のリポジトリ {repo.name} が隣に無い")
+    env["EDU_CREATOR_QA_JSON"] = json.dumps(qa_config(profile, overrides, repo))
     proc = subprocess.run(
         [sys.executable, str(path)],
         env=env,

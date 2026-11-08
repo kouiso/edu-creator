@@ -64,6 +64,17 @@ edu-creator check --spec course-spec.yaml tone no-skip -v
 tech-stack のコードブロックの取り出しは、言語名の後ろに属性が続く開き行（` ```typescript apply path=... `）も拾う
 Flask 版の書き方に揃えた。Next.js 版の取り出し方では属性付きのブロックが検査をすり抜けていたが、今の本文では結果は変わらなかった。
 
+## 5バッチ目（2026-11-08）
+
+| 検査の ID | 取り込み元 | 出した値 | 結果 |
+|---|---|---|---|
+| anchor | Flask 版（置き場を値から作る）に、Next.js 版の「読み比べ用の節の1行目の目印」の検査を足した | `code_langs`、完成版の根は course-spec の `app_repo` | 両方の取り込み元の自己テストを通り、両教材の本文で取り込み元と一致 |
+
+anchor の自己テストは完成版のリポジトリに実在するファイルを見るので、取り込み元を edu-creator の隣に clone してあるときだけ動き、無ければ skip する。
+
+zip-reference と sale-package は、配布 ZIP の中身を各リポジトリのビルドの仕組み（`Makefile`・`build-zip.sh`）から読むので、
+梱包を作る A8 と一緒に統合する。
+
 共有の部品: `markdown_scan.py`（両方で同じ）、`fence_roles.py`、`curriculum_blocks.py`（`code_langs`・`real_prefixes`・
 `real_root_files`・`real_root_files_manifest` を `qa` から受け取る。書き込み先の目印は両スタックの書き方を全部受ける）。
 
@@ -71,7 +82,7 @@ Flask 版の書き方に揃えた。Next.js 版の取り出し方では属性付
 
 | 種類 | 検査 | 統合で要ること |
 |---|---|---|
-| 両方にあり中身が違う | anchor・zip-reference・sale-package | 差を読み、スタックの語の一覧（comprehension の技術語、tech-stack の禁止ライブラリ）を `qa` に出す |
+| 両方にあり中身が違う | zip-reference・sale-package（A8 と一緒に） | 差を読み、スタックの語の一覧（comprehension の技術語、tech-stack の禁止ライブラリ）を `qa` に出す |
 | Next.js 版だけ | complete-code・complete-section-fences・false-success・procedure-order・tag-balance・unclosed-screen・version-split・scaffold-src-sync・scaffold-curriculum-alignment | JSX 固有のもの（jsx-marker・tag-balance）は nextjs の profile だけで有効にする |
 | Flask 版だけ | day-budget（Day 予算の4軸）・day-trees・scaffold-zip-sync | day-budget は `course-spec.yaml` の `budget` を上限に使う |
 | まだ無い | 想定エラーの枠（G12）・テンプレートのクラス名の存在（R3a の配布 CSS ができてから） | 新しく書く |

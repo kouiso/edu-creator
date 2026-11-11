@@ -381,6 +381,14 @@ Run `mise install` to install uv via mise, or install manually:
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
+## 🤖 issue・PR の自動チェック（repobot）
+
+公開リポなので、issue・PR・コメントに書いてはいけない内容を見張り、書き方をそろえる自動化が入っている。
+
+- 中身: `scripts/repobot/`（標準ライブラリだけ）と `.github/workflows/` の `public-content-check`・`issue-pr-format-check`・`issue-heading-fix`・`pr-triage`・`dependabot-auto-merge`
+- 公開内容チェックは、当たった規則・行番号・件数だけをコメントする。本文は自動で書き換えない
+- 手元で試す: `PYTHONPATH=scripts python3 -m pytest tests/test_repobot_*.py -q`
+
 ## 📄 License
 
 MIT

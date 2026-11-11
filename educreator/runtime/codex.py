@@ -1,8 +1,9 @@
 """`codex exec` を子プロセスで呼ぶ口。
 
 `codex exec --json` の JSONL（thread.started / item.started / item.completed / turn.completed / turn.failed / error）を
-共通の Event に直す。2026-11-08 の時点でこの環境に codex CLI が無いため、出力の形は公開文書の記載に基づく
-（tests/educreator/fixtures/codex_exec.jsonl）。実機で録画したら、そのカセットで置き換える。
+共通の Event に直す。成功の流れ（tests/educreator/fixtures/codex_exec.jsonl）は公開文書の記載に基づく。
+失敗の流れは codex-cli 0.167.1 の実機の出力を録画した（codex_exec_failed.jsonl）。
+実機のログインが切れていて成功の流れは録画できていない。録画できたらそのカセットで置き換える。
 """
 
 from __future__ import annotations
@@ -92,15 +93,10 @@ class CodexRuntime:
                     )
             elif t in ("turn.failed", "error"):
                 failed = True
-                err = obj.get("error") or {}
-                yield Event(
-                    "error",
-                    {
-                        "message": err.get("message")
-                        if isinstance(err, dict)
-                        else obj.get("message")
-                    },
-                )
+                # turn.failed は error.message、トップレベルの error は message に入っている（実機で確認）
+                err = obj.get("error")
+                message = err.get("message") if isinstance(err, dict) else obj.get("message")
+                yield Event("error", {"message": message or obj.get("message")})
             elif t == "turn.completed":
                 structured = None
                 try:

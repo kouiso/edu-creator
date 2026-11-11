@@ -134,3 +134,32 @@ def test_run_uses_account_env_and_records_usage(tmp_path, monkeypatch):
     assert "ANTHROPIC_API_KEY" not in seen["env"]
     rec = (tmp_path / "state" / "usage" / "claude-personal-1.jsonl").read_text()
     assert '"seven_day"' in rec
+
+
+def test_codex_real_failed_stream_is_not_ok_and_keeps_message():
+    # codex-cli 0.167.1 の実機の出力（モデル不許可で失敗）。警告の item(type=error) は失敗に数えず、
+    # トップレベルの error は message が直下に入っている
+    lines = (FIX / "codex_exec_failed.jsonl").read_text().splitlines()
+    res = collect(CodexRuntime(), _acc("chatgpt"), lines, returncode=1)
+    assert not res.ok
+    messages = [e.data["message"] for e in res.events if e.kind == "error"]
+    assert messages and all("not supported when using Codex" in m for m in messages)
+
+
+def test_run_does_not_inherit_stdin(tmp_path, monkeypatch):
+    import subprocess
+
+    seen = {}
+
+    class P:
+        returncode = 0
+        stderr = ""
+        stdout = (FIX / "claude_stream.jsonl").read_text()
+
+    def fake_run(cmd, cwd, env, **kw):
+        seen.update(kw)
+        return P()
+
+    monkeypatch.setattr("educreator.runtime.base.subprocess.run", fake_run)
+    run(ClaudeCodeRuntime(), _acc(d=str(tmp_path / "cfg")), AgentRequest(prompt="x", cwd=tmp_path))
+    assert seen["stdin"] is subprocess.DEVNULL

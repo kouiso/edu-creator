@@ -84,6 +84,8 @@ def run(
         cmd,
         cwd=req.cwd,
         env=account.env(),
+        # 標準入力を引き継ぐと codex exec が「追加入力」を待って止まりうる。プロンプトは引数で渡す
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         timeout=timeout,

@@ -16,6 +16,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _config import CONFIG  # noqa: E402
+from markdown_scan import code_blocks  # noqa: E402
 
 TS = CONFIG.get("tech_stack") or {}
 # 検査しない言語。端末で打つコマンドと図は教材のコードではない。
@@ -32,10 +33,12 @@ def check_tech_stack(filepath: str) -> bool:
     with open(filepath, "r", encoding="utf-8") as f:
         content = f.read()
 
-    code_blocks = re.findall(r"```(\w+)?[^\n]*\n(.*?)```", content, re.DOTALL)
+    # フェンスの数え方は共通の markdown_scan に任せる。自前の正規表現だと、チルダのフェンスや4連の入れ子を
+    # 取り落とし、その中の禁止パターンが検査をすり抜ける
+    blocks = [(lang, "\n".join(line for _, line in body)) for lang, body in code_blocks(content)]
     found = []
     expect_found = False
-    for lang, code in code_blocks:
+    for lang, code in blocks:
         if lang and lang.lower() in SKIPPED_LANGS:
             continue
         for pattern, name in FORBIDDEN:
@@ -50,7 +53,7 @@ def check_tech_stack(filepath: str) -> bool:
         return True
     if expect_found:
         print(MSG_EXPECT_OK)
-    elif code_blocks:
+    elif blocks:
         print(MSG_EXPECT_MISSING)
     for error in errors:
         print(error)

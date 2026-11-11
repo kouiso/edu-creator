@@ -63,6 +63,7 @@ edu-creator check --spec course-spec.yaml tone no-skip -v
 
 tech-stack のコードブロックの取り出しは、言語名の後ろに属性が続く開き行（` ```typescript apply path=... `）も拾う
 Flask 版の書き方に揃えた。Next.js 版の取り出し方では属性付きのブロックが検査をすり抜けていたが、今の本文では結果は変わらなかった。
+その後、取り出しを共通の走査（`markdown_scan.code_blocks`）に替えた。自前の正規表現ではチルダのフェンスと4連の入れ子を取り落とし、禁止パターンがすり抜けた。
 
 ## 5バッチ目（2026-11-08）
 

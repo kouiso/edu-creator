@@ -109,6 +109,18 @@ def main() -> int:
             failed += 1
             print(f'  ❌ 検出されない: {name} / {code!r} → {lines}')
 
+    # 1c. チルダのフェンスと4連の入れ子でも、禁止パターンをすり抜けさせない
+    name0, lang0, code0 = SAMPLES[0]
+    for label, text in (
+        ('~~~', f'~~~{lang0}\n{code0}\n~~~\n'),
+        ('4連', f'````{lang0}\n{code0}\n```\n````\n'),
+    ):
+        total += 1
+        ok, lines = run(text)
+        if ok or f'❌ 技術の範囲外: {name0}' not in lines:
+            failed += 1
+            print(f'  ❌ {label} のフェンスの中を検出しない: {name0} → {lines}')
+
     # 2. 検査しない言語の固定と、その言語では飛ばされること
     total += 1
     if frozenset(checker.SKIPPED_LANGS) != EXPECTED_SKIPPED_LANGS:

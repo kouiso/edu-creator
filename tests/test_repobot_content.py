@@ -94,7 +94,7 @@ def test_customer_and_amount_need_both_on_one_line():
 
 
 def test_personal_email_but_not_noreply_or_examples():
-    assert ids(content.scan(None, "連絡は taro.yamada@gmail.com まで")) == ["personal-email"]
+    assert ids(content.scan(None, "連絡は fake-user-0000@gmail.com まで")) == ["personal-email"]
     assert content.scan(None, "123+someone@users.noreply.github.com") == []
     assert content.scan(None, "noreply@example.com と user@example.org は例") == []
 
@@ -116,7 +116,7 @@ def test_line_numbers_and_counts():
 
 
 def test_report_never_contains_the_matched_text():
-    secret_line = f"key {FAKE_GH} mail taro.yamada@gmail.com"
+    secret_line = f"key {FAKE_GH} mail fake-user-0000@gmail.com"
     hits = content.scan(None, secret_line)
     text = content.report("この issue", hits)
     assert "要確認" in text
@@ -135,7 +135,7 @@ def test_none_body_is_safe():
 
 
 def test_japanese_next_to_ascii_is_still_caught():
-    assert ids(content.scan(None, "連絡はtaro.yamada@gmail.comまで")) == ["personal-email"]
+    assert ids(content.scan(None, "連絡はfake-user-0000@gmail.comまで")) == ["personal-email"]
     assert ids(content.scan(None, f"鍵は{FAKE_AWS}です")) == ["secret-value"]
     assert ids(content.scan(None, "データベース名: app_main")) == ["database"]
     assert ids(content.scan(None, "DB ID: 42")) == ["database"]
@@ -311,7 +311,7 @@ def test_generic_names_are_flagged_with_the_real_repo_list():
 
 
 def test_report_caps_places_to_stay_under_comment_limit():
-    body = "\n".join("taro.yamada@gmail.com" for _ in range(30000))
+    body = "\n".join("fake-user-0000@gmail.com" for _ in range(30000))
     text = content.report("この issue", content.scan(None, body))
     assert "ほか29980か所" in text
     assert len(text) < 65536

@@ -611,6 +611,17 @@ def test_issue_form_requires_the_five_sections():
     assert all(b["validations"]["required"] for b in fields)
 
 
+def test_sbi_issue_form_is_kept_because_repo_forms_replace_the_org_defaults():
+    # リポに ISSUE_TEMPLATE があると組織の既定フォームは全部使われなくなる。
+    # [SBI] は書き方チェックの対象外にしているので、画面から作れるよう組織のものをここにも置く。
+    with open(ROOT / ".github" / "ISSUE_TEMPLATE" / "sbi.yml", encoding="utf-8") as f:
+        tpl = yaml.safe_load(f)
+    assert "SBI" in tpl["name"]
+    fields = [b for b in tpl["body"] if b["type"] == "textarea"]
+    assert fields
+    assert not any(b.get("validations", {}).get("required") for b in fields)  # 本文は空でよい
+
+
 # ---- 本物の HTTP クライアント（手元の偽サーバに向ける） ----
 
 

@@ -107,13 +107,8 @@ def run_content(event_name: str, event: dict[str, Any], client: Any, env: dict[s
         # 人の書いた物の警告が埋もれるので見ない。人が書き換えた時（sender が人）は見る
         _log(f"Dependabot が書いたものなので検査しない: {author.get('login')}")
         return 0
-    forbidden, broken = content.load_forbidden(env.get("REPOBOT_FORBIDDEN_PATTERNS"))
-    if broken:
-        _log(f"::warning::禁止語の一覧のうち {broken} 行が正規表現として読めず、使っていません")
-    if not env.get("REPOBOT_FORBIDDEN_PATTERNS"):
-        _log("::notice::禁止語の一覧（secret）が渡されていないため、汎用の規則だけで検査します")
     public = content.public_names(env.get("GITHUB_WORKSPACE", "."))
-    hits = content.scan(title, body, forbidden, public)
+    hits = content.scan(title, body, public)
     marker = CONTENT_MARKER.format(key=key)
     try:
         # 当たりが無い時は新しく投稿しない。前に「要確認」を出していれば OK に書き換える

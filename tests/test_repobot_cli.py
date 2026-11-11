@@ -158,11 +158,12 @@ def test_content_covers_comments_reviews_and_prs(event_name, event, number, mark
     assert f"<!-- repobot:public-content:{marker} -->" in body["body"]
 
 
-def test_content_uses_forbidden_list_from_env():
+def test_content_has_no_custom_banned_word_extension_point():
+    # 依頼元指定の禁止語（secret 経由）は読まない。環境変数が渡されても結果は変わらない
     gh = FakeGitHub()
     env = {"REPOBOT_FORBIDDEN_PATTERNS": "secretproject"}
-    assert cli.run_content("issues", issue_event("SecretProject の話"), gh, env) == 1
-    assert "指定の禁止語" in gh.writes()[0][2]["body"]
+    assert cli.run_content("issues", issue_event("SecretProject の話"), gh, env) == 0
+    assert gh.writes() == []
 
 
 def test_content_skips_only_comments_written_by_this_automation():

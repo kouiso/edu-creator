@@ -115,33 +115,6 @@ def test_line_numbers_and_counts():
     assert summary == [("個人のメールアドレス", ["2", "4"], 3)]
 
 
-def test_forbidden_words_from_secret_list():
-    patterns, broken = content.load_forbidden("# 注釈\n\nprojectx\nfoo[0-9]+\n(broken\n")
-    assert broken == 1
-    assert len(patterns) == 2
-    hits = content.scan(None, "ProjectX の件と foo12 の件", patterns)
-    assert [(h.rule_id, h.count) for h in hits] == [("forbidden-word", 2)]
-
-
-def test_forbidden_list_accepts_grep_posix_classes():
-    patterns, broken = content.load_forbidden("bar[[:digit:]]+\nbaz[[:space:]]qux")
-    assert broken == 0
-    hits = content.scan(None, "bar42 と baz qux", patterns)
-    assert [(h.rule_id, h.count) for h in hits] == [("forbidden-word", 2)]
-
-
-def test_forbidden_word_place_is_hidden_so_the_list_cannot_be_probed():
-    patterns, _ = content.load_forbidden("projectx")
-    text = content.report("この issue", content.scan(None, "a\nb\nProjectX", patterns))
-    assert "| 指定の禁止語 | （非表示） | 1 |" in text
-    assert "3行目" not in text
-
-
-def test_load_forbidden_handles_none_and_empty():
-    assert content.load_forbidden(None) == ([], 0)
-    assert content.load_forbidden("") == ([], 0)
-
-
 def test_report_never_contains_the_matched_text():
     secret_line = f"key {FAKE_GH} mail taro.yamada@gmail.com"
     hits = content.scan(None, secret_line)

@@ -4,7 +4,7 @@
 
 当たった文字そのものは報告に書かない。規則の名前・行番号・件数だけを返す。
 ここにある規則は汎用の初期値で、正式な一覧は依頼元から受け取って差し替える前提。
-禁止語は環境変数 REPOBOT_FORBIDDEN_PATTERNS（1行1正規表現・非公開の secret）から足す。
+依頼元指定の禁止語の拡張点は持たない（kouiso/task-app #757 と同じ扱い）。
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 TITLE = "題"
-HIDDEN = "非表示"
 
 # とても長い1行は、重ねながら区切って見る（悪意のある長い行で検査を何分も止めないため）。
 # 重ねる幅より長い1つの当たり（鍵など）は無いので、区切り目にまたがっても見逃さない
@@ -275,40 +274,7 @@ RULES: tuple[Rule, ...] = (
     Rule("personal-email", "個人のメールアドレス"),
 )
 
-FORBIDDEN_ID = "forbidden-word"
-FORBIDDEN_LABEL = "指定の禁止語"
-LABELS = {r.rule_id: r.label for r in RULES} | {FORBIDDEN_ID: FORBIDDEN_LABEL}
-
-# 禁止語の一覧は grep -E 用に書かれている（scripts/guard/check-forbidden.sh と共用）ので、
-# POSIX の文字クラスを Python の書き方へ直してから使う
-_POSIX_CLASSES = {
-    "[:alpha:]": "a-zA-Z",
-    "[:digit:]": "0-9",
-    "[:alnum:]": "a-zA-Z0-9",
-    "[:upper:]": "A-Z",
-    "[:lower:]": "a-z",
-    "[:space:]": r"\s",
-    "[:blank:]": r" \t",
-    "[:punct:]": r"!-/:-@\[-`{-~",
-    "[:xdigit:]": "0-9A-Fa-f",
-}
-
-
-def load_forbidden(raw: str | None) -> tuple[list[re.Pattern[str]], int]:
-    """禁止語の一覧（1行1正規表現・# で始まる行は注釈）を読む。読めなかった行の数も返す。"""
-    patterns: list[re.Pattern[str]] = []
-    broken = 0
-    for line in (raw or "").splitlines():
-        s = line.strip()
-        if not s or s.startswith("#"):
-            continue
-        for posix, py in _POSIX_CLASSES.items():
-            s = s.replace(posix, py)
-        try:
-            patterns.append(re.compile(s, re.IGNORECASE))
-        except re.error:
-            broken += 1
-    return patterns, broken
+LABELS = {r.rule_id: r.label for r in RULES}
 
 
 @dataclass(frozen=True)
@@ -344,7 +310,6 @@ def _chunked_starts(text: str, find: Callable[[str], Iterable[int]]) -> set[int]
 def scan(
     title: str | None,
     body: str | None,
-    forbidden: list[re.Pattern[str]] | None = None,
     public: frozenset[str] = _ALWAYS_PUBLIC_NAMES,
 ) -> list[Hit]:
     """題と本文を1行ずつ見て、当たった規則・場所・件数を返す（当たった文字は返さない）。"""
@@ -354,7 +319,6 @@ def scan(
     # 行番号は GitHub の表示と同じく改行（\n）だけで数える
     for i, line in enumerate((body or "").split("\n"), start=1):
         lines.append((str(i), line.rstrip("\r")))
-    pats = forbidden or []
     hits: list[Hit] = []
     for place, line in lines:
         for rule in RULES:
@@ -363,27 +327,18 @@ def scan(
             n = len(_chunked_starts(line, lambda t, r=rule: r.starts(t, public)))
             if n:
                 hits.append(Hit(rule.rule_id, place, n))
-        n = len(_chunked_starts(line, lambda t: [m.start() for p in pats for m in p.finditer(t)]))
-        if n:
-            hits.append(Hit(FORBIDDEN_ID, place, n))
     return hits
 
 
 def summarize(hits: list[Hit]) -> list[tuple[str, list[str], int]]:
-    """規則ごとに (規則名, 場所の一覧, 件数合計) へまとめる。規則の並びは定義順。
-
-    禁止語の場所は出さない。出すと、書き換えを繰り返して非公開の一覧を当てられてしまうため。
-    """
+    """規則ごとに (規則名, 場所の一覧, 件数合計) へまとめる。規則の並びは定義順。"""
     # 同じ規則名の行を2つに分けた規則があるので、重ねずに定義順で並べる
-    order = list(dict.fromkeys([r.rule_id for r in RULES] + [FORBIDDEN_ID]))
+    order = list(dict.fromkeys(r.rule_id for r in RULES))
     out = []
     for rule_id in order:
         mine = [h for h in hits if h.rule_id == rule_id]
         if mine:
-            if rule_id == FORBIDDEN_ID:
-                places = [HIDDEN]
-            else:
-                places = list(dict.fromkeys(h.place for h in mine))
+            places = list(dict.fromkeys(h.place for h in mine))
             out.append((LABELS[rule_id], places, sum(h.count for h in mine)))
     return out
 
@@ -395,8 +350,6 @@ def _place_text(places: list[str]) -> str:
     def one(p: str) -> str:
         if p == TITLE:
             return "題"
-        if p == HIDDEN:
-            return "（非表示）"
         return f"{p}行目"
 
     # コメントは 65536 文字までなので、場所は先頭の数件だけ出す

@@ -41,6 +41,5 @@ jobs:
       - name: Scan body
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          REPOBOT_FORBIDDEN_PATTERNS: ${{ secrets.FORBIDDEN_PATTERNS }}
           PYTHONPATH: scripts
         run: python3 -m repobot content

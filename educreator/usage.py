@@ -35,8 +35,15 @@ def latest_usage(state_dir: Path, account: Account) -> dict[str, Any] | None:
         return None
     last = None
     for line in p.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            last = json.loads(line)
+        if not line.strip():
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            # 追記の途中で切れた行は読み飛ばし、読めた最後の記録を使う。1本の壊れた行で全アカウントの一覧を止めない
+            continue
+        if isinstance(rec, dict):
+            last = rec
     return last
 
 

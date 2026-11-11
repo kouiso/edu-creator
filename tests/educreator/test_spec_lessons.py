@@ -201,9 +201,11 @@ def test_check_runs_on_chapter_id_material(tmp_path, capsys):
     (mat / "screenshots").mkdir(parents=True)
     (mat / "README.md").write_text("# 置き場\n", encoding="utf-8")
     (mat / "expo-first-screen.md").write_text(
-        "# はじめての画面\n\n## Step 1: 開く\n\n本文\n", encoding="utf-8"
+        "# はじめての画面\n\n**合計時間**: 約30分\n\n## Step 1: 開く\n\n本文\n", encoding="utf-8"
     )
-    (mat / "live-reload.md").write_text("# 書き換え\n\n本文\n", encoding="utf-8")
+    (mat / "live-reload.md").write_text(
+        "# 書き換え\n\n**合計時間**: 約30分\n\n本文\n", encoding="utf-8"
+    )
     data = {
         **BASE,
         "stack_profile": "expo",

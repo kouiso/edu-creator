@@ -133,3 +133,17 @@ def test_expect_only_info_path_is_not_counted(tmp_path):
     r = run_check(get("budget"), mat, qa_config("flask", {}, tmp_path, BUDGET))
     assert r.returncode == 0, r.output
     assert "| 01 | 0 | 0 | 50 |" in r.output
+
+
+def test_day_without_total_time_is_not_silently_within_budget(tmp_path):
+    mat = tmp_path / "material"
+    mat.mkdir()
+    (mat / "day01_test.md").write_text("# Day 01\n\n本文だけ\n", encoding="utf-8")
+    r = run_check(get("budget"), mat, qa_config("flask", {}, tmp_path, BUDGET))
+    assert r.returncode == 1, r.output
+    assert "合計時間" in r.output and "day01_test.md" in r.output
+    # 報告だけの教材は、測れない Day があっても落とさない
+    r = run_check(
+        get("budget"), mat, qa_config("flask", {"budget_report_only": True}, tmp_path, BUDGET)
+    )
+    assert r.returncode == 0, r.output

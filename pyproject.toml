@@ -1,6 +1,6 @@
 [project]
 name = "edu-creator"
-version = "0.1.0"
+version = "3.0.0.dev0"
 description = "AI-powered educational material generator using CrewAI (GPT + Gemini Flash)"
 readme = "README.md"
 requires-python = ">=3.11"

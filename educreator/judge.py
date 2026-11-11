@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import statistics
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -101,11 +102,17 @@ class JudgeError(Exception):
 def parse(day: int, judge: str, account: str, structured: Any) -> JudgeResult:
     if not isinstance(structured, dict) or "scores" not in structured:
         raise JudgeError(f"Day{day:02d} の採点の形が違う: {str(structured)[:200]}")
+    if not isinstance(structured["scores"], dict):
+        raise JudgeError(
+            f"Day{day:02d} の scores が dict でない: {str(structured['scores'])[:200]}"
+        )
     scores, evidence = {}, {}
     for k, _ in DIMENSIONS:
         item = structured["scores"].get(k)
         if (
             not isinstance(item, dict)
+            # bool は int の仲間なので、true が 1 点として通らないよう先に外す
+            or isinstance(item.get("score"), bool)
             or not isinstance(item.get("score"), int)
             or not 1 <= item["score"] <= 5
         ):
@@ -127,7 +134,15 @@ def judge_day(
         permission_mode="plan" if account.provider == "chatgpt" else "default",
         max_turns=6,
     )
-    res = run(for_provider(account.provider), account, req, timeout=timeout, state_dir=state_dir)
+    try:
+        res = run(
+            for_provider(account.provider), account, req, timeout=timeout, state_dir=state_dir
+        )
+    except (subprocess.TimeoutExpired, OSError) as e:
+        # 1 Day の失敗（時間切れ・CLI が無い）で、残りの Day の採点を止めない
+        raise JudgeError(
+            f"Day{day:02d} の採点が動かなかった（{account.provider}/{account.name}）: {type(e).__name__}: {e}"
+        ) from e
     if not res.ok:
         raise JudgeError(
             f"Day{day:02d} の採点が失敗した（{account.provider}/{account.name}）: {res.stderr[-300:] or res.text[-300:]}"

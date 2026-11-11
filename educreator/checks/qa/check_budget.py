@@ -94,12 +94,14 @@ def main(argv: list[str]) -> int:
         print(f"❌ Day のファイルがありません: {root}", file=sys.stderr)
         return 2
 
-    over, warned, accepted = [], [], []
+    over, warned, accepted, unmeasured = [], [], [], []
     print("| Day | 写経の行（上限値） | ファイル | 分 | 概念 |")
     print("|---|---|---|---|---|")
     for p in files:
         n = day_number(p.name)
         m = measure(p.read_text(encoding="utf-8"))
+        if m["minutes"] is None:
+            unmeasured.append(p.name)
         cells = []
         for axis, _label in AXES:
             v = m[axis]
@@ -134,6 +136,12 @@ def main(argv: list[str]) -> int:
             print(f"  Day{n:02d} の{dict(AXES)[axis]} {v} > {limits[axis]}")
         if not report_only:
             print("  Step を分けるか、Day を分けるか、了承を course-spec の qa.budget_approved に理由付きで書く。")
+            return 1
+    if unmeasured:
+        # 合計時間を書き忘れた Day は、分が未検査のまま「予算内」になる。報告だけの教材以外は不合格にする
+        label = "合計時間が無い（報告だけ）" if report_only else "❌ `**合計時間**` が無く、分を測れない Day"
+        print(f"{label}: {', '.join(unmeasured)}")
+        if not report_only:
             return 1
     print(f"✅ Day 予算 OK（{len(files)} Day）")
     return 0

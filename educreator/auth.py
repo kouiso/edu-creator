@@ -47,6 +47,11 @@ def login(account: Account) -> int:
             "注意: macOS ではログイン後に `edu-creator auth status` で他のアカウントが外れていないか確かめる。",
             file=sys.stderr,
         )
+        print(
+            f"外れる場合は `claude setup-token` のトークンを環境変数 {account.token_env()} に入れる"
+            "（このアカウントの子プロセスにだけ CLAUDE_CODE_OAUTH_TOKEN として渡す）。",
+            file=sys.stderr,
+        )
     return subprocess.run(LOGIN_CMD[account.provider], env=account.env(), check=False).returncode
 
 
@@ -58,21 +63,26 @@ def status(account: Account, runner=subprocess.run) -> Status:
         return Status(
             account, True, False, "-", f"置き場 {account.config_dir} が無い（未ログイン）"
         )
-    proc = runner(
-        STATUS_CMD[account.provider],
-        env=account.env(),
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=30,
-    )
+    try:
+        proc = runner(
+            STATUS_CMD[account.provider],
+            env=account.env(),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        # 1つのアカウントの CLI が止まっても、残りのアカウントの状態は出す
+        return Status(account, True, None, "-", f"{exe} が30秒以内に応答しなかった")
     if account.provider == "claude":
         try:
             d = json.loads(proc.stdout)
         except json.JSONDecodeError:
             return Status(account, True, None, "-", (proc.stderr or proc.stdout).strip()[:200])
         method = str(d.get("authMethod", "-"))
-        logged = bool(d.get("loggedIn"))
+        # CLI が失敗して終わったなら、stdout にログイン済みの JSON が残っていてもログイン済みとは言わない
+        logged = bool(d.get("loggedIn")) and proc.returncode == 0
         detail = ""
         # API キーで動いているならサブスクではない。キーの経路は持たない方針（U-2）なので知らせる
         if "api" in method.lower() and "key" in method.lower():

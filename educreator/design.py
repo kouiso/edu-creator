@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
 DEFAULT_ROLES = [
     ("admin", "管理者"),
     ("owner", "作成者"),
@@ -192,8 +194,29 @@ class Matrix:
     stats: dict[str, int] = field(default_factory=dict)
 
 
+class AccessRoute(BaseModel):
+    """役割ごとの振る舞い（course-spec の design.access の1ルート）。書式は cell。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    endpoint: str
+    roles: dict[str, str] = Field(default_factory=dict)
+    states: list[str] = Field(default_factory=list)
+
+
+class Access(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    routes: list[AccessRoute] = Field(default_factory=list)
+
+
 def build(routes: list[Route], access: dict[str, Any] | None) -> Matrix:
-    by_ep = {r["endpoint"]: r for r in (access or {}).get("routes", [])}
+    # 形が違えば KeyError や AttributeError の traceback ではなく、ValueError（cli が報告する）にする
+    try:
+        parsed = Access.model_validate(access or {})
+    except ValidationError as e:
+        raise ValueError(f"design.access の形が違う: {e}") from e
+    by_ep = {r.endpoint: r for r in parsed.routes}
     unknown = sorted(set(by_ep) - {r.endpoint for r in routes})
     if unknown:
         raise ValueError(f"役割の振る舞いに、コードに無いルートがある: {unknown}")
@@ -201,8 +224,8 @@ def build(routes: list[Route], access: dict[str, Any] | None) -> Matrix:
     counts = {"need": 0, "na": 0, "blank": 0}
     blocks = []
     for r in screens:
-        a = by_ep.get(r.endpoint, {})
-        roles = a.get("roles", {})
+        a = by_ep.get(r.endpoint, AccessRoute(endpoint=r.endpoint))
+        roles = a.roles
         lines = [
             f"### `{r.endpoint}` — {', '.join(f'`{x}`' for x in r.rules)}（{'・'.join(r.methods)}）",
             "",
@@ -214,7 +237,7 @@ def build(routes: list[Route], access: dict[str, Any] | None) -> Matrix:
         for rk, rname in DEFAULT_ROLES:
             row = []
             for sk, _ in DEFAULT_STATES:
-                text, kind = cell(roles.get(rk), sk, a.get("states", []))
+                text, kind = cell(roles.get(rk), sk, a.states)
                 row.append(text)
                 counts[kind] += 1
             lines.append(f"| {rname} | " + " | ".join(row) + " |")

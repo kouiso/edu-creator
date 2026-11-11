@@ -55,8 +55,19 @@ class Account:
         env = dict(os.environ if base is None else base)
         for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
             env.pop(key, None)
+        # 親の環境に OAuth トークンがあると、全アカウントの子プロセスに同じトークンが渡り、
+        # 置き場を分けても全部1つのアカウントで動いてしまう。共通の物は外し、このアカウントの物だけ入れる
+        env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+        token = env.get(self.token_env())
+        if token and self.provider == "claude":
+            env["CLAUDE_CODE_OAUTH_TOKEN"] = token
         env[CONFIG_ENV[self.provider]] = str(self.config_dir)
         return env
+
+    def token_env(self) -> str:
+        """このアカウント専用の OAuth トークンを渡す環境変数の名前（例: EDU_CREATOR_TOKEN_CLAUDE_PERSONAL_1）。"""
+        slug = self.name.upper().replace("-", "_")
+        return f"EDU_CREATOR_TOKEN_{self.provider.upper()}_{slug}"
 
 
 @dataclass(frozen=True)
@@ -141,7 +152,8 @@ def load_accounts(path: Path | None = None, home: Path | None = None) -> Account
                 )
             accounts.append(Account(cast(Provider, prov), name, expand(conf["config_dir"]), mp))
 
-    dirs = [a.config_dir for a in accounts]
+    # 文字列が違っても `..` やシンボリックリンクで同じ置き場を指すものを、同じ物として数える
+    dirs = [a.config_dir.resolve() for a in accounts]
     if len(set(dirs)) != len(dirs):
         raise AccountError(
             "同じ config_dir を2つのアカウントが使っている（ログインが互いに上書きされる）"

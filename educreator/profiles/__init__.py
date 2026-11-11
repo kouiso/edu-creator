@@ -66,6 +66,21 @@ class RoutesConfig(BaseModel):
 
 
 class StackProfile(BaseModel):
+    """スタックごとの実行・検査の値（`educreator/profiles/<name>.yaml`）。
+
+    Attributes:
+        name: profile の名前（course-spec の stack_profile）。
+        language: 写経の主な言語。
+        filepath_comment: 拡張子ごとの、コードブロックの1行目に置く書き込み先の書き方。`{path}` を置き換える。
+        install: 依存を入れるコマンド列。
+        start: アプリを起動するコマンド列。`{port}` を空いているポートに置き換える。
+        test: テストを動かすコマンド列。無ければ空。
+        url: 起動したアプリの URL。`{port}` を置き換える。
+        ready_path: 起動を待つときに 200 を確かめる道。
+        qa: 検査に渡す値。
+        routes: design のルートの集め方。省略すると design の段は使えない。
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     name: str

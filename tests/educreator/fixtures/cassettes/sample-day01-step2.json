@@ -31,7 +31,10 @@
    "Glob",
    "Grep",
    "Bash"
-  ]
+  ],
+  "permission_mode": "acceptEdits",
+  "max_turns": 40,
+  "model": null
  },
  "result": {
   "account": "personal-1",
@@ -193,5 +196,9 @@
  "files": {
   "app/todo.py": "# やることを覚えておく小さなアプリ。Day ごとに1つずつ機能を足す\nITEMS: list[str] = []\n\n\ndef add(item: str) -> None:\n    ITEMS.append(item)\n\n\ndef list_items() -> str:\n    lines = []\n    for number, item in enumerate(ITEMS, start=1):\n        lines.append(f\"{number}. {item}\")\n    return \"\\n\".join(lines)\n",
   "material/day01_todo.md": "# Day01 やることを覚える\n\n今日は、やることを足して一覧で見られるようにします。\n\n### Step 1: やることを足す関数を書く（10分）\n\nやることを1つ覚えておく `add` を書きます。足したものを後で一覧に出すためです。\n\n```python\n# filepath: app/todo.py\nITEMS: list[str] = []\n\n\ndef add(item: str) -> None:\n    ITEMS.append(item)\n```\n\n確認方法: `python3 -c \"from app.todo import add, ITEMS; add('買い物'); print(ITEMS)\"` を実行し、`['買い物']` と出れば正しいです。\n\n| エラーメッセージ | 原因 | 直し方 |\n|---|---|---|\n| `ModuleNotFoundError: No module named 'app'` | `app` フォルダの外で実行した | プロジェクトのフォルダに移ってから実行する |\n\n### Step 2: 足したやることを番号付きで並べる関数を書く（15分）\n\n足したやることを「1. 買い物」のように番号付きで1行ずつ並べた文字列を返す `list_items` を書きます。Step 1 の `add` で覚えただけでは中身を見られないので、人が読める形にして取り出せるようにするためです。\n\n`enumerate(ITEMS, start=1)` は、リストの中身を1から数えた番号と一緒に1つずつ取り出します。`\"\\n\".join(lines)` は、リストの文字列を改行でつないで1つの文字列にします。`return` は、関数の結果を呼び出した側に返します。\n\n```python\n# filepath: app/todo.py\n# やることを覚えておく小さなアプリ。Day ごとに1つずつ機能を足す\nITEMS: list[str] = []\n\n\ndef add(item: str) -> None:\n    ITEMS.append(item)\n\n\ndef list_items() -> str:\n    lines = []\n    for number, item in enumerate(ITEMS, start=1):\n        lines.append(f\"{number}. {item}\")\n    return \"\\n\".join(lines)\n```\n\n確認方法: 次のコマンドを実行します。\n\n```bash\npython3 -c \"from app.todo import add, list_items; add('買い物'); add('洗濯'); print(list_items())\"\n```\n\n次のように出れば正しいです。\n\n```\n1. 買い物\n2. 洗濯\n```\n\n| エラーメッセージ | 原因 | 直し方 |\n|---|---|---|\n| `ImportError: cannot import name 'list_items' from 'app.todo'` | 関数の名前を打ち間違えた（`list_item` など）か、ファイルを保存していない | `def list_items():` の綴りを確かめ、ファイルを保存してからもう一度実行する |\n| `IndentationError: expected an indented block after 'for' statement` | `for` の次の行（`lines.append(...)`）を字下げしていない | `lines.append(...)` の行頭に `for` の行より4つ多く空白を入れる |\n| エラーは出ないが `None` と表示される | 最後の `return \"\\n\".join(lines)` を書き忘れた | 関数の最後の行に `return \"\\n\".join(lines)` を足す |\n| エラーは出ないが `{number}. {item}` とそのまま表示される | 文字列の前の `f` を書き忘れた | `f\"{number}. {item}\"` のように `\"` の前に `f` を付ける |\n| `ModuleNotFoundError: No module named 'app'` | `app` フォルダの外で実行した | プロジェクトのフォルダに移ってから実行する |\n"
+ },
+ "start": {
+  "app/todo.py": "1a9cc37963aa44d68ca651483e2d556d0136b44ecf385d6382df61b25bace0cb",
+  "material/day01_todo.md": "c7c2a1679b80484034ccaa8da3631fbdabb1396b78f0ed627fc5a68e01d9a60c"
  }
 }

@@ -100,3 +100,29 @@ def test_judge_run_still_finds_day_prefixed_material(tmp_path, monkeypatch, caps
     rc = main(["judge", "run", "--spec", str(spec), "--config", str(cfg), "--days", "1-2"])
     assert rc == 0, capsys.readouterr().out
     assert [p.name for p in seen] == ["day01_intro.md", "day02_login.md"]
+
+
+def test_check_fails_when_a_chapter_file_is_missing(tmp_path, capsys):
+    """chapter-id の教材で章のファイルが欠けたら、残りだけを検査して成功にしない。"""
+    mat = tmp_path / "curriculum"
+    mat.mkdir()
+    (tmp_path / "app").mkdir()
+    (mat / "intro.md").write_text("# はじめ\n本文\n", encoding="utf-8")
+    spec = tmp_path / "course-spec.yaml"
+    spec.write_text(
+        yaml.safe_dump(
+            {
+                **SPEC,
+                "material_dir": "curriculum",
+                "naming": "chapter-id",
+                "chapters": [
+                    {"day": 1, "id": "intro", "title": "はじめ", "file": "intro.md"},
+                    {"day": 2, "id": "login", "title": "ログイン", "file": "login.md"},
+                ],
+            },
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    assert main(["check", "--spec", str(spec), "setext-heading"]) == 2
+    assert "login.md" in capsys.readouterr().err

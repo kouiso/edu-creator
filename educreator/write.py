@@ -89,7 +89,15 @@ def request_for(
 
 def _request_key(req: AgentRequest) -> dict[str, Any]:
     # 録画と照合する依頼の中身。作業ツリーの場所（機械ごとに違う）は含めない
-    return {"prompt": req.prompt, "schema": req.output_schema, "tools": list(req.allowed_tools)}
+    # 再生の結果が変わりうる項目は全部入れる。permission_mode・max_turns・model を変えたのに古い録画が通ると、変えた条件を試していない
+    return {
+        "prompt": req.prompt,
+        "schema": req.output_schema,
+        "tools": list(req.allowed_tools),
+        "permission_mode": req.permission_mode,
+        "max_turns": req.max_turns,
+        "model": req.model,
+    }
 
 
 def write_step(
@@ -108,5 +116,5 @@ def write_step(
     before = cassette.snapshot(req.cwd)
     res = run(for_provider(account.provider), account, req, timeout=1800, state_dir=state_dir)
     if cassette_path is not None:
-        cassette.save(cassette_path, key, res, cassette.changes(req.cwd, before), req.cwd)
+        cassette.save(cassette_path, key, res, cassette.changes(req.cwd, before), req.cwd, before)
     return res

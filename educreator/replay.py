@@ -162,59 +162,66 @@ def replay_day(
         port = free_port()
         base = profile.url.replace("{port}", str(port))
         env = {**os.environ, "PORT": str(port)}
-        proc = subprocess.Popen(
-            _fmt(profile.start, port),
-            cwd=tree,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            start_new_session=True,
-        )
-        try:
-            deadline = time.monotonic() + ready_timeout
-            status = None
-            while time.monotonic() < deadline:
-                if proc.poll() is not None:
-                    out = proc.stdout.read() if proc.stdout else ""
-                    return res.fail(
-                        f"起動してすぐ止まった（rc={proc.returncode}）: {out.strip()[-300:]}"
-                    )
-                try:
-                    status = _get(base + profile.ready_path, timeout=2)
-                    break
-                except (urllib.error.URLError, ConnectionError, OSError):
-                    time.sleep(0.2)
-            if status is None:
-                return res.fail(f"{ready_timeout:.0f}秒で {profile.ready_path} が応答しない")
-            if status != 200:
-                return res.fail(f"{profile.ready_path} が {status} を返した（200 のはず）")
-            res.steps.append(f"✅ 起動して {profile.ready_path} が 200")
-            for path, want in (paths or {}).items():
-                got = _get(base + path, timeout=5)
-                if got != want:
-                    res.fail(f"{path} が {got} を返した（{want} のはず）")
-                else:
-                    res.steps.append(f"✅ {path} が {want}")
-            if shots:
-                shot_dir = (shots_dir or Path(tempfile.gettempdir())) / f"day{day:02d}"
-                for r in take_shots(base, shots, login, shot_dir):
-                    if r.get("ok"):
-                        res.steps.append(f"✅ 撮影 {r['name']}（{r['status']}）")
-                    else:
-                        res.fail(
-                            f"撮影 {r['name']} が失敗（{r.get('status')}）: {r.get('error', '')}"
-                        )
-            return res
-        finally:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(proc.pid, signal.SIGTERM)
+        # パイプに溜めたまま誰も読まないと、出力の多いサーバー（開発サーバーなど）が書き込みで止まる。ファイルへ流し、落ちた時に末尾を読む
+        with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as log:
+            proc = subprocess.Popen(
+                _fmt(profile.start, port),
+                cwd=tree,
+                env=env,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                text=True,
+                start_new_session=True,
+            )
             try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
+                deadline = time.monotonic() + ready_timeout
+                status = None
+                while time.monotonic() < deadline:
+                    if proc.poll() is not None:
+                        log.seek(0)
+                        out = log.read()
+                        return res.fail(
+                            f"起動してすぐ止まった（rc={proc.returncode}）: {out.strip()[-300:]}"
+                        )
+                    try:
+                        status = _get(base + profile.ready_path, timeout=2)
+                        break
+                    except (urllib.error.URLError, ConnectionError, OSError):
+                        time.sleep(0.2)
+                if status is None:
+                    return res.fail(f"{ready_timeout:.0f}秒で {profile.ready_path} が応答しない")
+                if status != 200:
+                    return res.fail(f"{profile.ready_path} が {status} を返した（200 のはず）")
+                res.steps.append(f"✅ 起動して {profile.ready_path} が 200")
+                for path, want in (paths or {}).items():
+                    try:
+                        got = _get(base + path, timeout=5)
+                    except (urllib.error.URLError, OSError) as e:
+                        res.fail(f"{path} に繋がらない（{want} のはず）: {e}")
+                        continue
+                    if got != want:
+                        res.fail(f"{path} が {got} を返した（{want} のはず）")
+                    else:
+                        res.steps.append(f"✅ {path} が {want}")
+                if shots:
+                    shot_dir = (shots_dir or Path(tempfile.gettempdir())) / f"day{day:02d}"
+                    for r in take_shots(base, shots, login, shot_dir):
+                        if r.get("ok"):
+                            res.steps.append(f"✅ 撮影 {r['name']}（{r['status']}）")
+                        else:
+                            res.fail(
+                                f"撮影 {r['name']} が失敗（{r.get('status')}）: {r.get('error', '')}"
+                            )
+                return res
+            finally:
                 with contextlib.suppress(ProcessLookupError):
-                    os.killpg(proc.pid, signal.SIGKILL)
-                proc.wait()
+                    os.killpg(proc.pid, signal.SIGTERM)
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    with contextlib.suppress(ProcessLookupError):
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    proc.wait()
 
 
 SHOOT_JS = Path(__file__).with_name("shoot.cjs")
@@ -226,20 +233,27 @@ def take_shots(
     """起動中のサーバーから、画面のスクショを撮る（Playwright。配色はライトに固定）。"""
     out.mkdir(parents=True, exist_ok=True)
     payload = {"base": base, "shots": shots, "login": login, "out": str(out)}
-    p = subprocess.run(
-        ["node", str(SHOOT_JS)],
-        input=json.dumps(payload, ensure_ascii=False),
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=300,
-    )
+
+    def all_failed(error: str) -> list[dict[str, Any]]:
+        return [{"name": s["name"], "ok": False, "status": 0, "error": error} for s in shots]
+
+    try:
+        p = subprocess.run(
+            ["node", str(SHOOT_JS)],
+            input=json.dumps(payload, ensure_ascii=False),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=300,
+        )
+    except (subprocess.TimeoutExpired, OSError) as e:
+        return all_failed(f"撮影が動かなかった: {type(e).__name__}: {e}")
     if p.returncode != 0:
-        return [
-            {"name": s["name"], "ok": False, "status": 0, "error": p.stderr.strip()[-300:]}
-            for s in shots
-        ]
-    return list(json.loads(p.stdout))
+        return all_failed(p.stderr.strip()[-300:])
+    try:
+        return list(json.loads(p.stdout))
+    except json.JSONDecodeError:
+        return all_failed(f"撮影の出力が JSON でない: {p.stdout.strip()[-200:]}")
 
 
 def parse_days(spec: str, last: int) -> list[int]:

@@ -30,8 +30,11 @@ class Lesson(BaseModel):
 
 
 def load_lessons(path: Path) -> list[Lesson]:
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    return [Lesson.model_validate(x) for x in data.get("lessons", [])]
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    # 空ファイルや lessons の無い YAML を「問題なしの空の台帳」にしない
+    if not isinstance(data, dict) or not isinstance(data.get("lessons"), list):
+        raise ValueError(f"{path} は mapping で、list の `lessons` が要る")
+    return [Lesson.model_validate(x) for x in data["lessons"]]
 
 
 def check_lessons(lessons: list[Lesson]) -> list[str]:

@@ -161,9 +161,24 @@ class CourseSpec(Strict):
         return self
 
 
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """同じキーが2回ある YAML を拒否する。safe_load は後の値を残すので、前の `chapters` や `qa` が検証の前に消える。"""
+
+    def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Any, Any]:
+        seen: set[Any] = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=True)
+            if key in seen:
+                raise ValueError(
+                    f"キー {key!r} が重複している（{key_node.start_mark.line + 1} 行目）"
+                )
+            seen.add(key)
+        return super().construct_mapping(node, deep)
+
+
 def load_spec(path: Path) -> CourseSpec:
     with path.open(encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+        data = yaml.load(f, Loader=_UniqueKeyLoader)
     if not isinstance(data, dict):
         raise ValueError(f"{path} の中身が mapping ではない")
     return CourseSpec.model_validate(data)
@@ -195,7 +210,7 @@ def check_chapters(spec: CourseSpec, base: Path) -> list[str]:
         elif c.title not in h:
             problems.append(f"Day{c.day:02d}: タイトルが違う（spec: {c.title!r} / 本文: {h!r}）")
     listed = {c.file for c in spec.chapters}
-    if mdir.is_dir() and spec.chapters:
+    if mdir.is_dir():
         # chapter-id の命名では、章ファイルは直下の .md（README.md などの本文でない物は除く）
         pattern = "day*.md" if spec.naming == "day" else "*.md"
         for p in sorted(mdir.glob(pattern)):

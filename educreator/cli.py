@@ -79,6 +79,12 @@ def _cmd_check(args: argparse.Namespace) -> int:
         print(f"エラー: {e}", file=sys.stderr)
         return 2
     material = spec_path.parent / spec.material_dir
+    if spec.naming == "chapter-id":
+        # 章の一部が無いまま、残った章だけを検査して成功にしない
+        missing = [c.file for c in spec.chapters if not (material / c.file).is_file()]
+        if missing:
+            print(f"エラー: chapters にある章のファイルが無い: {missing}", file=sys.stderr)
+            return 2
     view: contextlib.AbstractContextManager[Path] = (
         checks.day_view(material, [(c.day, c.file) for c in spec.chapters])
         if spec.naming == "chapter-id"

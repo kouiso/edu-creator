@@ -21,7 +21,7 @@ GOOD_ISSUE = """## 背景
 1. 計測する
 
 ## 誰の判断待ち
-磯貝さん: 入れてよいか
+担当者: 入れてよいか
 
 ## 完了条件
 - [ ] 1秒以内に出る
@@ -43,7 +43,7 @@ def test_complete_issue_is_green():
 
 
 def test_missing_heading_is_reported():
-    body = GOOD_ISSUE.replace("## 誰の判断待ち\n磯貝さん: 入れてよいか\n", "")
+    body = GOOD_ISSUE.replace("## 誰の判断待ち\n担当者: 入れてよいか\n", "")
     assert form.check_issue(body) == ["「誰の判断待ち」の見出しがありません"]
 
 

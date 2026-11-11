@@ -1,0 +1,8 @@
+{"type":"thread.started","thread_id":"t_real"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Codex is ignoring 1 unrecognized configuration setting. Check for typos or deprecated settings.\n  user (~/.codex/config.toml): `memories.experimental_compact_prompt_file` is ignored."}}
+{"type":"item.completed","item":{"id":"item_1","type":"error","message":"Codex is ignoring 1 unrecognized configuration setting. Check for typos or deprecated settings.\n  user (~/.codex/config.toml): `memories.experimental_compact_prompt_file` is ignored."}}
+{"type":"item.completed","item":{"id":"item_2","type":"error","message":"Under-development features enabled: chronicle. Under-development features are incomplete and may behave unpredictably. To suppress this warning, set `suppress_unstable_features_warning = true` in ~/.codex/config.toml."}}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_3","type":"error","message":"Exceeded skills context budget. All skill descriptions were removed and 3 additional skills were not included in the model-visible skills list."}}
+{"type":"error","message":"The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account."}
+{"type":"turn.failed","error":{"message":"The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account."}}

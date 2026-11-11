@@ -1,0 +1,22 @@
+# 学び台帳（§3.6）。指摘は必ず「検査スクリプト」「skill の規則」「CI の設定」のどれかに変換する。
+# 同じ分類（category）が2回以上出たのに enforced_by が空なら、`edu-creator lessons check` が落ちる（E-7）。
+# enforced_by の書き方: check:<検査の ID> / skill:<リポジトリ>:<skill 名>[#節] / ci:<ワークフロー>:<ジョブ>
+lessons:
+  - id: LS-001
+    date: "2026-11-08"
+    source: "教材工房プラン 第8版 §7.8 指摘-1（ユーザーの指摘）"
+    category: vendor-terms
+    symptom: サブスクの OAuth を「規約違反と読まれる」として、ユーザーの希望（サブスクで動かす）を狭めた
+    root_cause: 調査の要約と報道だけで判断し、一次情報の全文を読まなかった。赤組も一次情報を取りに行かなかった
+    enforced_by:
+      - "skill:kouiso/ai-global:vendor-terms-rule-vs-preference#Rule"
+    test: 規約・料金・仕様を理由に希望を狭める提案に、一次情報の URL と条文の引用があるかをレビューの指示で確かめる
+  - id: LS-002
+    date: "2026-11-08"
+    source: "教材工房プラン 第9版 §7.8 指摘-3（ユーザーの指摘）"
+    category: vendor-terms
+    symptom: ユーザーの方針（他の人に提供しない）を、規約の要求として書いた
+    root_cause: 「規約で禁止されていること」と「ユーザーが選んだこと」を分けて書く決まりが無かった
+    enforced_by:
+      - "skill:kouiso/ai-global:vendor-terms-rule-vs-preference#Keep three kinds of constraints apart"
+    test: DoD とリスク表の制約ごとに出所（規約の条文 / ユーザーの決定 / リポジトリの決まり）が書かれているかを確かめる

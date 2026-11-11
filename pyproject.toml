@@ -1,10 +1,10 @@
 [project]
 name = "edu-creator"
-version = "0.1.0"
+version = "3.0.0.dev0"
 description = "AI-powered educational material generator using CrewAI (GPT + Gemini Flash)"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { file = "LICENSE" }
 authors = [
     { name = "kouiso", email = "kouiso@example.com" }
 ]
@@ -27,18 +27,31 @@ dev = [
     "ruff>=0.4.0",
     "mypy>=1.10.0",
     "pytest>=8.0.0",
+    "types-PyYAML>=6.0",
 ]
 
 [project.scripts]
-edu-creator = "main:main"
+edu-creator = "educreator.cli:main"
+edu-creator-legacy = "main:main"
 
 [build-system]
 requires = ["hatchling>=1.21.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["agents", "config", "core", "prompt", "schemas", "services", "skills", "templates", "tests", "tools", "utils"]
-only-include = ["*.py", "agents/**", "config/**", "core/**", "prompt/**", "schemas/**", "services/**", "skills/**", "templates/**", "tests/**", "tools/**", "utils/**"]
+# 手元の editable インストールでは、リポジトリ直下をそのまま import の起点にする。
+dev-mode-dirs = ["."]
+# wheel に入れるものを名前で列挙する。only-include はグロブを解釈せず、
+# グロブで書くと何にも一致せず wheel にコードが1本も入らんかった（edu-creator も edu-creator-legacy も ModuleNotFoundError）
+packages = ["educreator", "agents", "config", "core", "prompt", "schemas", "skills", "templates", "tools", "utils"]
+# edu-creator-legacy（main:main）が import する直下のモジュール
+# packages は直下の .py を拾わんので force-include で名前を渡す
+[tool.hatch.build.targets.wheel.force-include]
+"main.py" = "main.py"
+"config_models.py" = "config_models.py"
+"pdf_validator.py" = "pdf_validator.py"
+"screenshot_manager.py" = "screenshot_manager.py"
+"quality_checker.py" = "quality_checker.py"
 
 # =============================================================================
 # Ruff Configuration (Linter + Formatter)
@@ -106,6 +119,7 @@ ignore_missing_imports = true
 # =============================================================================
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"

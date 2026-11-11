@@ -1,0 +1,53 @@
+name: nextjs
+language: typescript
+filepath_comment:
+  .ts: "// filepath: {path}"
+  .tsx: "// filepath: {path}"
+  .js: "// filepath: {path}"
+  .css: "/* filepath: {path} */"
+  .prisma: "// filepath: {path}"
+install: ["npm", "ci"]
+start: ["npm", "run", "dev", "--", "--port", "{port}"]
+test: ["npm", "test"]
+url: "http://127.0.0.1:{port}"
+ready_path: "/"
+routes:
+  kind: page-files
+  root: src/app
+qa:
+  code_langs: [typescript, ts, tsx, javascript, js, jsx]
+  real_prefixes: [src/, prisma/, scripts/]
+  crossref_ignore: [npm, src, app, page.tsx, layout.tsx, README.md]
+  jsx_langs: [tsx, jsx, typescript, javascript, ts, js]
+  tech_stack:
+    forbidden_ignorecase: false
+    skipped_langs: [mermaid, bash, shell, sh]
+    forbidden:
+      - ["from\\s+['\"]@mui/material['\"]", "@mui/material"]
+      - ["from\\s+['\"]@mui/icons-material['\"]", "@mui/icons-material"]
+      - ["from\\s+['\"]@mui/system['\"]", "@mui/system"]
+      - ["from\\s+['\"]@emotion/react['\"]", "@emotion/react"]
+      - ["from\\s+['\"]@emotion/styled['\"]", "@emotion/styled"]
+      - ['<Box\s', '<Box> (MUI)']
+      - ['<Typography\s', '<Typography> (MUI)']
+      - ['<TextField\s', '<TextField> (MUI)']
+      - ['sx=\{', 'sx={{ }} (MUI style prop)']
+    expect:
+      - "from\\s+['\"]@/components?/ui/"
+      - "from\\s+['\"]lucide-react['\"]"
+      - 'className="'
+    msg_forbidden: "❌ MUI使用禁止: {name}"
+    msg_expect_ok: "✅ shadcn/ui パターン検出"
+    msg_expect_missing: "⚠️ shadcn/uiパターンが検出されませんでした"
+  tech_terms: [Next.js, React, TypeScript, Prisma, tRPC, Tailwind, shadcn, Supabase, PostgreSQL, Docker, Vercel,
+    SSR, SSG, ISR, CSR, API, ORM, CLI, CRUD, JWT, OAuth, CDN, DNS, コンポーネント, ミドルウェア, スキーマ, マイグレーション, デプロイ, レンダリング, ルーティング, スキャフォールド,
+    useState, useEffect, useMemo, useCallback, Props, 型定義, 型推論, ジェネリクス, インターフェース, 外部キー, トランザクション, インデックス, リレーション]
+  # トップレベル（字下げ無し）の定義だけ
+  def_patterns:
+    - '^(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)'
+    - '^(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*='
+    - '^(?:export\s+)?(?:type|interface)\s+([A-Za-z_$][\w$]*)'
+    - '^model\s+([A-Za-z_]\w*)\s*\{'
+  import_patterns:
+    - '^import\s+(?:type\s+)?\{([^}]*)\}'
+    - '^import\s+([A-Za-z_$][\w$]*)\s+from'

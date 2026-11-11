@@ -383,4 +383,5 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ## 📄 License
 
-MIT
+All Rights Reserved（使用・複製・改変・再配布を許可しません）。全文は [LICENSE](LICENSE)。
+この変更より前に MIT License で公開した版は、それを入手した人については MIT のまま使えます。

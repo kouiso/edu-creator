@@ -1,0 +1,52 @@
+name: flask
+language: python
+filepath_comment:
+  .py: "# filepath: {path}"
+  .html: "{# filepath: {path} #}"
+  .css: "/* filepath: {path} */"
+  .toml: "# filepath: {path}"
+install: ["poetry", "install"]
+start: ["poetry", "run", "flask", "run", "--port", "{port}"]
+test: ["poetry", "run", "pytest"]
+url: "http://127.0.0.1:{port}"
+ready_path: "/login"
+routes:
+  kind: decorator-routes
+  root: app/routes
+qa:
+  code_langs: [python, py, html, jinja, toml, ini]
+  real_prefixes: [app/, tests/, migrations/]
+  crossref_ignore: [poetry, flask, app, __init__.py, base.html, README.md]
+  tech_stack:
+    forbidden_ignorecase: true
+    forbidden:
+      - ['^\s*(?:from|import)\s+django\b', Django]
+      - ['^\s*(?:from|import)\s+fastapi\b', FastAPI]
+      - ['^\s*(?:from|import)\s+bottle\b', Bottle]
+      - ['^\s*(?:from|import)\s+tornado\b', Tornado]
+      - ['^\s*(?:from|import)\s+pyramid\b', Pyramid]
+      - ['#\s*type:\s*ignore', '# type: ignore']
+      - ['#\s*noqa\b', '# noqa']
+      - ['<script[^>]+jquery', jQuery]
+      - ['<script[^>]+chart(?:\.umd)?(?:\.min)?\.js|<script[^>]+/chart\.js', Chart.js]
+      - ['<script[^>]+\bd3(?:\.v\d+)?(?:\.min)?\.js', D3.js]
+    expect:
+      - '^\s*from\s+flask(?:_[a-z]+)?\b'
+      - '^\s*import\s+flask\b'
+      - '\{%\s*(?:extends|block|for|if)\b'
+    msg_forbidden: "❌ 技術の範囲外: {name}"
+    msg_expect_ok: "✅ Flask パターン検出"
+    msg_expect_missing: "⚠️ Flask パターンが検出されませんでした"
+  tech_terms: [Flask, Jinja, SQLAlchemy, Flask-Migrate, Flask-Login, Flask-WTF, Bootstrap, SQLite, PostgreSQL, Poetry, Render, Git, GitHub,
+    API, ORM, CLI, CRUD, CSRF, CDN, DNS, HTTP, URL, ミドルウェア, スキーマ, マイグレーション, デプロイ, ルーティング, テンプレート, Blueprint, セッション, 仮想環境,
+    デコレータ, インスタンス, モジュール, パッケージ, 例外, 外部キー, トランザクション, インデックス, リレーション]
+  # トップレベル（字下げ無し）の定義だけ。メソッドや関数の中のローカルな名前は、同じ名前でも別物なので数えない
+  def_patterns:
+    - '^def\s+([A-Za-z_]\w*)\s*\('
+    - '^class\s+([A-Za-z_]\w*)\b'
+    - '^([A-Za-z_]\w*)\s*(?::[^=]+)?=[^=]'
+  # import で入る名前も、その Day で使えるようになる名前として数える。捕獲群1は名前の並び
+  import_patterns:
+    - '^from\s+[\w.]+\s+import\s+\(([^)]*)\)'
+    - '^from\s+[\w.]+\s+import\s+([^(\n#]+)'
+    - '^import\s+([^\n#]+)'

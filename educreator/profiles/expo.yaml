@@ -1,0 +1,18 @@
+name: expo
+language: typescript
+filepath_comment:
+  .ts: "// filepath: {path}"
+  .tsx: "// filepath: {path}"
+  .js: "// filepath: {path}"
+  .sql: "-- filepath: {path}"
+install: ["npm", "ci"]
+# リプレイと撮影は Expo の web で行う（§10 の号砲 #6）
+start: ["npx", "expo", "start", "--web", "--port", "{port}"]
+test: ["npm", "test"]
+url: "http://127.0.0.1:{port}"
+ready_path: "/"
+qa:
+  code_langs: [typescript, ts, tsx, javascript, js, jsx, sql]
+  real_prefixes: [app/, src/, supabase/]
+  crossref_ignore: [npm, npx, app, src, README.md]
+  jsx_langs: [tsx, jsx, typescript, javascript, ts, js]

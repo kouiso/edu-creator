@@ -1,0 +1,672 @@
+#!/usr/bin/env python3
+"""check_visualization.py の退行テスト。
+
+このチェッカーもテストが無いまま運用されていた。check_tone.py で
+「正規表現が日本語では成立せず一度も検出していなかった」が起きたのと同じ穴が
+ここにも空いている。中核は次の3つで、どれも黙って空振りしうる。
+
+  1. 表のデータ行、または見出し・原因・解決方法がそろった全幅トラブル項目（4以上）
+  2. スクショ位置（5パターンのどれかに当たる行を数える / 3以上）
+  3. Mermaid 図（Day 4,7,9,13,16,21,27 だけ必須）
+  4. 同一ファイル内の画像重複（既定は FAIL、フラグ/環境変数で WARNING へ落とせる）
+
+4 は既定と WARNING 化の両モードを固定する。既定が黙って WARNING へ戻ると、検査は
+動いているのにゲートが素通りする。逆に WARNING 化の経路が壊れると、撮り直しの途中で
+一時的に落とせなくなって作業が止まる。
+
+check_visualization は純粋関数を切り出していないので、一時ファイルに書いて
+本体を丸ごと動かし、標準出力の件数と終了コードの両方を突き合わせる。
+件数を見るのは、しきい値を跨がない壊れ方（重複除去の消滅など）を
+終了コードだけでは取り逃がすため。
+"""
+
+import io
+import os
+import re
+import shutil
+import sys
+import tempfile
+from contextlib import redirect_stdout
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "educreator" / "checks" / "qa"))
+
+import check_visualization as checker  # noqa: E402
+from check_visualization import (  # noqa: E402
+    WARN_ON_DUPLICATE_IMAGE_ENV,
+    check_visualization,
+    duplicate_image_is_fatal,
+    troubleshooting_entries,
+)
+
+# redmine-clone の実際の値。日割りが決まるまで、Mermaid 必須の日も写真の免除も無い。
+# 値が黙って変わったら落とす（例外表の変更は仕様変更なので、このテストも一緒に直す）。
+EXPECTED_REQUIRED_MERMAID_DAYS: frozenset[int] = frozenset()
+EXPECTED_SCREENSHOT_EXEMPT: dict[str, str] = {}
+
+# 振る舞いの検査に使う見本の値。実際の表が空でも、表を引く経路が壊れていないことを確かめる。
+REQUIRED_MERMAID_DAYS = {4, 13, 20}
+FIXTURE_SCREENSHOT_EXEMPT = {
+    'day20_ネットに公開.md': 'デプロイの日。主役は Render の管理画面で撮れず、アプリの画面は前日から変わらない',
+    '00_カリキュラム目次.md': 'カリキュラム全体の目次。画面操作の手順を持たない索引の本で、撮る画面が存在しない',
+}
+
+TABLE_SEPARATOR = '| --- | --- |'
+TABLE_ROW = '| セル | 値 |'
+MERMAID_BLOCK = '```mermaid\ngraph TD\n  A --> B\n```\n'
+
+
+def table_rows(count: int) -> str:
+    """数えられる表の行を count 行ぶん作る。区切り行は '---' を含むので数に入らない。"""
+    return TABLE_SEPARATOR + '\n' + ''.join(TABLE_ROW + '\n' for _ in range(count))
+
+
+def camera_lines(count: int) -> str:
+    return ''.join(f'📸 一覧画面のスクショ{i}\n' for i in range(count))
+
+
+BASE = table_rows(4) + camera_lines(3)
+
+
+def troubleshooting_entry(
+    number: int,
+    cause: str = '原因があります。',
+    solution: str = '設定を確認します。',
+) -> str:
+    return (
+        f'#### エラー{number}\n\n'
+        f'**原因**: {cause}\n\n'
+        f'**解決方法**: {solution}\n\n'
+    )
+
+
+def troubleshooting_section(entries: str) -> str:
+    return f'## よくあるエラー\n\n### Day 01-02: 環境構築\n\n{entries}\n## 次の節\n\n'
+
+
+def make_tempdir() -> str:
+    """一時ディレクトリ名に day+数字 が紛れると Day 判定がそちらに先食いされるため、
+    当たらない名前が出るまで引き直す。"""
+    while True:
+        directory = tempfile.mkdtemp()
+        if not re.search(r'day(\d+)', directory.lower()):
+            return directory
+        shutil.rmtree(directory)
+
+
+def run_checker(
+    filename: str, content: str, fail_on_duplicate_image: bool = True
+) -> tuple[int, tuple[int, int, int], int]:
+    """(終了コード, (表, スクショ, Mermaid), 重複画像件数) を返す。"""
+    directory = make_tempdir()
+    try:
+        path = Path(directory) / filename
+        path.write_text(content, encoding='utf-8')
+        buffer = io.StringIO()
+        exit_code = 0
+        with redirect_stdout(buffer):
+            try:
+                check_visualization(str(path), fail_on_duplicate_image=fail_on_duplicate_image)
+            except SystemExit as exc:
+                exit_code = exc.code if isinstance(exc.code, int) else 1
+        output = buffer.getvalue()
+        return exit_code, parse_counts(output), parse_duplicate_count(output)
+    finally:
+        shutil.rmtree(directory)
+
+
+def parse_counts(output: str) -> tuple[int, int, int]:
+    labels = ('表の数', 'スクショ位置', 'Mermaid図')
+    values = []
+    for label in labels:
+        found = re.search(rf'{label}: (\d+)', output)
+        # 件数の出力自体が消えたら、以降の突き合わせが全部無意味になるので即失敗させる。
+        values.append(int(found.group(1)) if found else -1)
+    return tuple(values)
+
+
+def parse_duplicate_count(output: str) -> int:
+    """重複画像の件数。出力が消えたら -1 を返して必ず失敗させる。"""
+    found = re.search(r'重複画像: (\d+)', output)
+    return int(found.group(1)) if found else -1
+
+
+# (テスト名, ファイル名, 本文, 期待する終了コード, 期待する (表, スクショ, Mermaid))
+CASES: list[tuple[str, str, str, int, tuple[int, int, int]]] = [
+    (
+        '表4・スクショ3で通る',
+        'day01_setup.md',
+        BASE,
+        0,
+        (4, 3, 0),
+    ),
+    (
+        '表が3行だと落ちる（境界）',
+        'day01_setup.md',
+        table_rows(3) + camera_lines(3),
+        1,
+        (3, 3, 0),
+    ),
+    (
+        'スクショが2件だと落ちる（境界）',
+        'day01_setup.md',
+        table_rows(4) + camera_lines(2),
+        1,
+        (4, 2, 0),
+    ),
+    (
+        '区切り行だけ並べても表に数えない',
+        'day01_setup.md',
+        (TABLE_SEPARATOR + '\n') * 4 + camera_lines(3),
+        1,
+        (0, 3, 0),
+    ),
+    (
+        'パイプが2本しかない行は表に数えない',
+        'day01_setup.md',
+        ('| セル |\n') * 4 + camera_lines(3),
+        1,
+        (0, 3, 0),
+    ),
+    (
+        '1行に複数マーカーが並んでも1件として数える',
+        'day01_setup.md',
+        table_rows(4)
+        + ''.join(f'📸 ![一覧](./shots/list{i}.png) 📸\n' for i in range(3)),
+        0,
+        (4, 3, 0),
+    ),
+    (
+        'png の画像リンクを数える',
+        'day01_setup.md',
+        table_rows(4) + ''.join(f'![一覧](./shots/list{i}.png)\n' for i in range(3)),
+        0,
+        (4, 3, 0),
+    ),
+    (
+        'jpg の画像リンクも数える',
+        'day01_setup.md',
+        table_rows(4) + ''.join(f'![一覧](./shots/list{i}.jpg)\n' for i in range(3)),
+        0,
+        (4, 3, 0),
+    ),
+    (
+        'パスに screenshot を含めば拡張子は問わない',
+        'day01_setup.md',
+        table_rows(4) + ''.join(f'![一覧](./assets/screenshot-{i}.webp)\n' for i in range(3)),
+        0,
+        (4, 3, 0),
+    ),
+    (
+        'png/jpg/screenshot 以外の画像は数えない（誤検知防止）',
+        'day01_setup.md',
+        table_rows(4) + ''.join(f'![図](./assets/diagram-{i}.svg)\n' for i in range(3)),
+        1,
+        (4, 0, 0),
+    ),
+    (
+        '旧式の目印【スクリーンショット】が残っていると落ちる',
+        'day01_setup.md',
+        BASE + '【スクリーンショット】\n',
+        1,
+        (4, 3, 0),
+    ),
+    (
+        '旧式の目印はコロンありの書き方でも落ちる',
+        'day01_setup.md',
+        BASE + '【スクリーンショット: 一覧画面】\n',
+        1,
+        (4, 3, 0),
+    ),
+    (
+        'Mermaid 必須 Day で図が無ければ落ちる',
+        'day04_state.md',
+        BASE,
+        1,
+        (4, 3, 0),
+    ),
+    (
+        'Mermaid 必須 Day で図があれば通る',
+        'day04_state.md',
+        BASE + MERMAID_BLOCK,
+        0,
+        (4, 3, 1),
+    ),
+    (
+        'Day 13 も Mermaid 必須',
+        'day13_router.md',
+        BASE,
+        1,
+        (4, 3, 0),
+    ),
+    (
+        'Day 20 も Mermaid 必須',
+        'day20_deploy.md',
+        BASE,
+        1,
+        (4, 3, 0),
+    ),
+    (
+        'Mermaid 不要 Day は図が無くても通る',
+        'day05_form.md',
+        BASE,
+        0,
+        (4, 3, 0),
+    ),
+    (
+        'ファイル名に Day 番号が無ければ Mermaid を要求しない',
+        'overview.md',
+        BASE,
+        0,
+        (4, 3, 0),
+    ),
+    (
+        'コードフェンスの外に出てくる mermaid の語は図に数えない',
+        'day04_state.md',
+        BASE + 'ここでは mermaid 記法そのものには踏み込みません。\n',
+        1,
+        (4, 3, 0),
+    ),
+    (
+        '言語名が途中までのフェンスは Mermaid 図に数えない',
+        'day04_state.md',
+        BASE + '```merma\ngraph TD\n  A --> B\n```\n',
+        1,
+        (4, 3, 0),
+    ),
+    (
+        'Mermaid ブロックは書いた数だけ数える',
+        'day04_state.md',
+        BASE + MERMAID_BLOCK + MERMAID_BLOCK,
+        0,
+        (4, 3, 2),
+    ),
+]
+
+
+# 同じ画像を貼り回していないかの検査。既定は FAIL、フラグを落とすと WARNING。
+# (テスト名, ファイル名, 本文, FAIL化フラグ, 期待する終了コード,
+#  期待する (表, スクショ, Mermaid), 期待する重複画像件数)
+DUPLICATE_CASES: list[tuple[str, str, str, bool, int, tuple[int, int, int], int]] = [
+    (
+        'スクショ3枚が別画像なら重複ゼロ',
+        'day01_setup.md',
+        table_rows(4) + ''.join(f'![一覧](./screenshots/list{i}.png)\n' for i in range(3)),
+        True,
+        0,
+        (4, 3, 0),
+        0,
+    ),
+    (
+        # 綴り違いで同じ1枚を3回貼る。素の文字列で数えると別物に見えて、
+        # 「スクショ位置3箇所」を満たしつつ重複0で通ってまう。
+        '同じ画像を綴り違いで3回貼っても重複として落ちる',
+        'day01_setup.md',
+        table_rows(4)
+        + '![一覧](./screenshots/list.png)\n'
+        + '![一覧](screenshots/list.png)\n'
+        + '![一覧](screenshots/../screenshots/list.png)\n',
+        True,
+        1,
+        (4, 3, 0),
+        1,
+    ),
+    (
+        '同じ画像を3回貼るとフラグ有効時は落ちる',
+        'day01_setup.md',
+        table_rows(4) + '![一覧](./screenshots/list.png)\n' * 3,
+        True,
+        1,
+        (4, 3, 0),
+        1,
+    ),
+    (
+        '同じ画像を3回貼ってもフラグを落とせば通る（撮り直し中の暫定運用）',
+        'day01_setup.md',
+        table_rows(4) + '![一覧](./screenshots/list.png)\n' * 3,
+        False,
+        0,
+        (4, 3, 0),
+        1,
+    ),
+    (
+        '2回目から重複とみなす（境界）',
+        'day01_setup.md',
+        table_rows(4)
+        + '![一覧](./screenshots/list.png)\n' * 2
+        + '![詳細](./screenshots/detail.png)\n',
+        True,
+        1,
+        (4, 3, 0),
+        1,
+    ),
+    (
+        '別々の画像が2組重複していれば2件と数える',
+        'day01_setup.md',
+        table_rows(4)
+        + '![一覧](./screenshots/list.png)\n' * 2
+        + '![詳細](./screenshots/detail.png)\n' * 2,
+        True,
+        1,
+        (4, 4, 0),
+        2,
+    ),
+    (
+        'jpg も重複の対象',
+        'day01_setup.md',
+        table_rows(4) + '![一覧](./screenshots/list.jpg)\n' * 3,
+        True,
+        1,
+        (4, 3, 0),
+        1,
+    ),
+    (
+        'パスに screenshot を含む拡張子違いも重複の対象',
+        'day01_setup.md',
+        table_rows(4) + '![一覧](./assets/screenshot-list.webp)\n' * 3,
+        True,
+        1,
+        (4, 3, 0),
+        1,
+    ),
+    (
+        'png/jpg/screenshot 以外の画像は重複に数えない（スクショ位置と母集団を揃える）',
+        'day01_setup.md',
+        table_rows(4)
+        + camera_lines(3)
+        + '![図](./assets/diagram.svg)\n' * 3,
+        True,
+        0,
+        (4, 3, 0),
+        0,
+    ),
+    (
+        '📸 だけの日は画像パスが無いので重複ゼロ',
+        'day01_setup.md',
+        BASE,
+        True,
+        0,
+        (4, 3, 0),
+        0,
+    ),
+    (
+        '重複が唯一の違反なら、フラグ無効時は exit 0 のまま',
+        'day05_form.md',
+        table_rows(4) + '![一覧](./screenshots/list.png)\n' * 4,
+        False,
+        0,
+        (4, 4, 0),
+        1,
+    ),
+]
+
+
+# 表を全幅項目へ置き換えた付録も、見出し・原因・解決方法の実体を検査して通す。
+# (テスト名, 本文, 期待終了コード, 期待項目数, 構造エラーの有無)
+STRUCTURED_CASES: list[tuple[str, str, int, int, bool]] = [
+    (
+        '全幅トラブル項目が4件そろえば表なしで通る',
+        troubleshooting_section(''.join(troubleshooting_entry(i) for i in range(4)))
+        + camera_lines(3),
+        0,
+        4,
+        False,
+    ),
+    (
+        '全幅トラブル項目が3件だと落ちる',
+        troubleshooting_section(''.join(troubleshooting_entry(i) for i in range(3)))
+        + camera_lines(3),
+        1,
+        3,
+        False,
+    ),
+    (
+        '原因がない項目を混ぜると件数を満たしても落ちる',
+        troubleshooting_section(
+            ''.join(troubleshooting_entry(i) for i in range(4))
+            + '#### 原因なし\n\n**解決方法**: 設定を確認します。\n'
+        ) + camera_lines(3),
+        1,
+        5,
+        True,
+    ),
+    (
+        '解決方法がない項目を混ぜると件数を満たしても落ちる',
+        troubleshooting_section(
+            ''.join(troubleshooting_entry(i) for i in range(4))
+            + '#### 解決方法なし\n\n**原因**: 原因があります。\n'
+        ) + camera_lines(3),
+        1,
+        5,
+        True,
+    ),
+    (
+        '原因のラベルだけでは実体とみなさない',
+        troubleshooting_section(
+            ''.join(troubleshooting_entry(i) for i in range(4))
+            + '#### 原因が空\n\n**原因**:\n\n**解決方法**: 設定を確認します。\n'
+        ) + camera_lines(3),
+        1,
+        5,
+        True,
+    ),
+    (
+        '解決方法のラベルだけでは実体とみなさない',
+        troubleshooting_section(
+            ''.join(troubleshooting_entry(i) for i in range(4))
+            + '#### 解決方法が空\n\n**原因**: 原因があります。\n\n**解決方法**:\n'
+        ) + camera_lines(3),
+        1,
+        5,
+        True,
+    ),
+    (
+        '解決方法は次の段落に実体があれば通る',
+        troubleshooting_section(
+            ''.join(troubleshooting_entry(i) for i in range(3))
+            + '#### 複数手順\n\n**原因**: 原因があります。\n\n'
+            + '**解決方法**:\n\n1）設定を確認します。\n\n2）再実行します。\n'
+        ) + camera_lines(3),
+        0,
+        4,
+        False,
+    ),
+    (
+        '見出しのない原因と解決方法を混ぜると落ちる',
+        troubleshooting_section(
+            '**原因**: 見出しがありません。\n\n**解決方法**: 設定を確認します。\n\n'
+            + ''.join(troubleshooting_entry(i) for i in range(4))
+        ) + camera_lines(3),
+        1,
+        4,
+        True,
+    ),
+    (
+        'コードフェンス内の見本は全幅項目に数えない',
+        troubleshooting_section(
+            ''.join(troubleshooting_entry(i) for i in range(3))
+            + '```markdown\n#### 偽の項目\n**原因**: 見本です。\n**解決方法**: 見本です。\n```\n'
+        ) + camera_lines(3),
+        1,
+        3,
+        False,
+    ),
+    (
+        '表の行数を満たしても壊れた全幅項目は通さない',
+        table_rows(4)
+        + troubleshooting_section(
+            '#### 原因なし\n\n**解決方法**: 設定を確認します。\n'
+        )
+        + camera_lines(3),
+        1,
+        1,
+        True,
+    ),
+]
+
+
+def default_is_fatal() -> bool:
+    """本体の既定が「重複は FAIL」のままかを見る。
+
+    ここが黙って WARNING へ戻ると、検査は動いているのにゲートが素通りする。防ぐために
+    作った退行が、誰にも気づかれずに戻ってこられる状態になる。逆に、撮り直しの途中で
+    一時的に落とす経路（環境変数 / CLI フラグ）が壊れると、作業中に全体が止まる。
+    """
+    # 引数を渡さずに呼ぶ。run_checker の既定ではなく、本体の既定を見たいので
+    # ここだけは直接呼ぶ。run_checker 経由やと本体を戻しても落ちん飾りになる。
+    directory = make_tempdir()
+    try:
+        path = Path(directory) / 'day01_setup.md'
+        path.write_text(
+            table_rows(4) + '![一覧](./screenshots/list.png)\n' * 3, encoding='utf-8'
+        )
+        default_fails = False
+        with redirect_stdout(io.StringIO()):
+            try:
+                check_visualization(str(path))
+            except SystemExit as exc:
+                default_fails = bool(exc.code)
+    finally:
+        shutil.rmtree(directory)
+    flag_ok = not duplicate_image_is_fatal(['--warn-on-duplicate-image', 'x.md'])
+    saved = os.environ.get(WARN_ON_DUPLICATE_IMAGE_ENV)
+    try:
+        os.environ[WARN_ON_DUPLICATE_IMAGE_ENV] = '1'
+        env_ok = not duplicate_image_is_fatal(['x.md'])
+        os.environ[WARN_ON_DUPLICATE_IMAGE_ENV] = '0'
+        env_off_ok = duplicate_image_is_fatal(['x.md'])
+        # `FALSE` は「落とさん」の意思表示なので FAIL のままでないとあかん。
+        # 大文字を弾いて WARNING へ落ちると、落としたつもりのない人がゲートを失う。
+        os.environ[WARN_ON_DUPLICATE_IMAGE_ENV] = 'FALSE'
+        env_upper_ok = duplicate_image_is_fatal(['x.md'])
+        os.environ[WARN_ON_DUPLICATE_IMAGE_ENV] = ' 1 '
+        env_pad_ok = not duplicate_image_is_fatal(['x.md'])
+        # 想定してへん値は FAIL のまま。綴り間違いを WARNING 扱いにすると、
+        # 落としたつもりのない人がゲートを失う。
+        os.environ[WARN_ON_DUPLICATE_IMAGE_ENV] = 'ture'
+        env_typo_ok = duplicate_image_is_fatal(['x.md'])
+    finally:
+        if saved is None:
+            os.environ.pop(WARN_ON_DUPLICATE_IMAGE_ENV, None)
+        else:
+            os.environ[WARN_ON_DUPLICATE_IMAGE_ENV] = saved
+    return default_fails and flag_ok and env_ok and env_off_ok and env_upper_ok and env_pad_ok and env_typo_ok
+
+
+def check_screenshot_exemption() -> list[str]:
+    """写真の下限を免除する日の扱い。
+
+    免除は「視覚化そのものを免除する」やない。図の下限は課したままで、
+    しかも理由の文言を必ず持たせる。空の理由で骨抜きにされんため。
+    """
+    from check_visualization import MIN_MERMAID_WHEN_EXEMPT
+
+    SCREENSHOT_EXEMPT = FIXTURE_SCREENSHOT_EXEMPT
+    fails: list[str] = []
+    for name, reason in {**ORIGINAL_SCREENSHOT_EXEMPT, **SCREENSHOT_EXEMPT}.items():
+        if not isinstance(reason, str) or len(reason.strip()) < 8:
+            fails.append(f'❌ {name} の免除に理由が書かれていない')
+
+    target = next(iter(SCREENSHOT_EXEMPT))
+    tables = '\n'.join('| a | b |' for _ in range(5))
+    figures = '\n'.join('```mermaid\nflowchart LR\n  A --> B\n```' for _ in range(MIN_MERMAID_WHEN_EXEMPT))
+    # 図が足りていれば、写真1枚でも通る。
+    code, counts, _ = run_checker(target, f'{tables}\n\n{figures}\n\n![a](./screenshots/x.png)\n')
+    if code != 0:
+        fails.append(f'❌ 免除した日が落ちている（{counts}）')
+    # 図が足りなければ、免除していても落ちる。
+    code, _, _ = run_checker(target, f'{tables}\n\n```mermaid\nflowchart LR\n  A --> B\n```\n')
+    if code == 0:
+        fails.append('❌ 図が足りんのに免除だけで通している')
+    # 図の下限は日次教材（dayNN）にだけ課す。索引・付録など画面操作を持たない
+    # 本には課さない — 表だけの本文で通るのが仕様。dayNN とそうでない本を
+    # 混同すると、どちらかの側が黙って骨抜きになる。
+    for name in SCREENSHOT_EXEMPT:
+        code, _, _ = run_checker(name, f'{tables}\n')
+        if re.search(r'day\d+', name.lower()):
+            if code == 0:
+                fails.append(f'❌ {name}: 図が無いのに日次教材の免除で通している')
+        elif code != 0:
+            fails.append(f'❌ {name}: 日次教材でない本に図の下限を課している')
+    # 登録の無い日は、これまでどおり写真3箇所を要求する。
+    code, _, _ = run_checker('day99_未登録.md', f'{tables}\n\n{figures}\n\n![a](./screenshots/x.png)\n')
+    if code == 0:
+        fails.append('❌ 登録の無い日まで免除している')
+    return fails
+
+
+ORIGINAL_REQUIRED_MERMAID_DAYS = checker.REQUIRED_MERMAID_DAYS
+ORIGINAL_SCREENSHOT_EXEMPT = dict(checker.SCREENSHOT_EXEMPT)
+
+
+def main() -> int:
+    failed = 0
+    # 振る舞いの検査は見本の値で行う。実際の値の確認は最後に別に行う。
+    checker.REQUIRED_MERMAID_DAYS = frozenset(REQUIRED_MERMAID_DAYS)
+    checker.SCREENSHOT_EXEMPT = dict(FIXTURE_SCREENSHOT_EXEMPT)
+
+    for name, filename, content, expected_code, expected_counts in CASES:
+        code, counts, duplicates = run_checker(filename, content)
+        # 既存ケースは全て別画像なので、重複0が崩れたら重複判定の母集団がずれている。
+        if (code, counts, duplicates) != (expected_code, expected_counts, 0):
+            failed += 1
+            print(
+                f'  ❌ {name}: 期待 exit={expected_code} {expected_counts} 重複0 / '
+                f'実際 exit={code} {counts} 重複{duplicates}'
+            )
+
+    for name, filename, content, fatal, expected_code, expected_counts, expected_dup in (
+        DUPLICATE_CASES
+    ):
+        code, counts, duplicates = run_checker(filename, content, fail_on_duplicate_image=fatal)
+        if (code, counts, duplicates) != (expected_code, expected_counts, expected_dup):
+            failed += 1
+            print(
+                f'  ❌ {name}: 期待 exit={expected_code} {expected_counts} '
+                f'重複{expected_dup} / 実際 exit={code} {counts} 重複{duplicates}'
+            )
+
+    for name, content, expected_code, expected_count, expect_errors in STRUCTURED_CASES:
+        code, counts, duplicates = run_checker('appendix_troubleshooting.md', content)
+        count, errors = troubleshooting_entries(content)
+        expected_table_count = 4 if content.startswith(TABLE_SEPARATOR) else 0
+        if (
+            code != expected_code
+            or counts != (expected_table_count, 3, 0)
+            or duplicates != 0
+            or count != expected_count
+            or bool(errors) != expect_errors
+        ):
+            failed += 1
+            print(
+                f'  ❌ {name}: 期待 exit={expected_code} 項目={expected_count} '
+                f'構造エラー={expect_errors} / 実際 exit={code} counts={counts} '
+                f'重複={duplicates} 項目={count} 構造エラー={errors}'
+            )
+
+    if not default_is_fatal():
+        failed += 1
+        print('  ❌ 重複判定の既定が FAIL でない、または警告へ落とす切り替えが壊れています')
+
+    # 例外表がこっそり変わると、図の抜けた教材や写真の無い教材が黙って通るようになる。
+    if ORIGINAL_REQUIRED_MERMAID_DAYS != EXPECTED_REQUIRED_MERMAID_DAYS:
+        failed += 1
+        print(f'  ❌ REQUIRED_MERMAID_DAYS が {sorted(ORIGINAL_REQUIRED_MERMAID_DAYS)} に変えられています')
+    if ORIGINAL_SCREENSHOT_EXEMPT != EXPECTED_SCREENSHOT_EXEMPT:
+        failed += 1
+        print(f'  ❌ SCREENSHOT_EXEMPT が {sorted(ORIGINAL_SCREENSHOT_EXEMPT)} に変えられています')
+
+    for message in check_screenshot_exemption():
+        failed += 1
+        print(f'  {message}')
+
+    total = len(CASES) + len(DUPLICATE_CASES) + len(STRUCTURED_CASES) + 4
+    if failed:
+        print(f'❌ check_visualization 自己テスト {failed}/{total} 失敗')
+        return 1
+    print(f'✅ check_visualization 自己テスト {total}/{total} 合格')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

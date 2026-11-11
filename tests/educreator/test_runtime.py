@@ -163,3 +163,25 @@ def test_run_does_not_inherit_stdin(tmp_path, monkeypatch):
     monkeypatch.setattr("educreator.runtime.base.subprocess.run", fake_run)
     run(ClaudeCodeRuntime(), _acc(d=str(tmp_path / "cfg")), AgentRequest(prompt="x", cwd=tmp_path))
     assert seen["stdin"] is subprocess.DEVNULL
+
+
+def test_codex_warning_error_item_does_not_fail_a_completed_turn():
+    # 警告の item(type=error) が混ざっていても、turn.completed で終わり returncode=0 なら成功
+    warning = '{"type":"item.completed","item":{"id":"w","type":"error","message":"warn"}}'
+    lines = (FIX / "codex_exec.jsonl").read_text().splitlines()
+    res = collect(CodexRuntime(), _acc("chatgpt"), [lines[0], warning, *lines[1:]], returncode=0)
+    assert res.ok
+
+
+def test_codex_schema_file_is_reused_not_accumulated(tmp_path):
+    rt = CodexRuntime(schema_dir=tmp_path / "s")
+    req = AgentRequest(prompt="x", cwd=tmp_path, output_schema={"type": "object"})
+    first = rt.build_command(req)
+    second = rt.build_command(req)
+    assert first[first.index("--output-schema") + 1] == second[second.index("--output-schema") + 1]
+    assert len(list((tmp_path / "s").iterdir())) == 1
+    other = rt.build_command(
+        AgentRequest(prompt="x", cwd=tmp_path, output_schema={"type": "array"})
+    )
+    assert other[other.index("--output-schema") + 1] != first[first.index("--output-schema") + 1]
+    assert len(list((tmp_path / "s").iterdir())) == 2

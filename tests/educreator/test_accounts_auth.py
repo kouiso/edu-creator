@@ -136,3 +136,10 @@ def test_cli_auth_status_prints_every_account(tmp_path, capsys, monkeypatch):
     assert main(["auth", "status", "--config", str(_write(tmp_path, ""))]) == 0
     out = capsys.readouterr().out
     assert all(n in out for n in ("personal-1", "personal-2", "personal-3", "team"))
+
+
+def test_cli_auth_status_missing_config_exits_2(tmp_path, capsys):
+    from educreator.cli import main
+
+    assert main(["auth", "status", "--config", str(tmp_path / "nonexistent.toml")]) == 2
+    assert "nonexistent.toml" in capsys.readouterr().err

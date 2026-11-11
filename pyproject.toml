@@ -40,10 +40,18 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 # 手元の editable インストールでは、リポジトリ直下をそのまま import の起点にする。
-# これが無いと wheel にコードが入らず、edu-creator / edu-creator-legacy のどちらの入口も ModuleNotFoundError になっていた
 dev-mode-dirs = ["."]
-packages = ["educreator", "agents", "config", "core", "prompt", "schemas", "skills", "templates", "tests", "tools", "utils"]
-only-include = ["*.py", "educreator/**", "agents/**", "config/**", "core/**", "prompt/**", "schemas/**", "skills/**", "templates/**", "tests/**", "tools/**", "utils/**"]
+# wheel に入れるものを名前で列挙する。only-include はグロブを解釈せず、
+# グロブで書くと何にも一致せず wheel にコードが1本も入らんかった（edu-creator も edu-creator-legacy も ModuleNotFoundError）
+packages = ["educreator", "agents", "config", "core", "prompt", "schemas", "skills", "templates", "tools", "utils"]
+# edu-creator-legacy（main:main）が import する直下のモジュール
+# packages は直下の .py を拾わんので force-include で名前を渡す
+[tool.hatch.build.targets.wheel.force-include]
+"main.py" = "main.py"
+"config_models.py" = "config_models.py"
+"pdf_validator.py" = "pdf_validator.py"
+"screenshot_manager.py" = "screenshot_manager.py"
+"quality_checker.py" = "quality_checker.py"
 
 # =============================================================================
 # Ruff Configuration (Linter + Formatter)

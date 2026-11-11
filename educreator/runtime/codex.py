@@ -8,7 +8,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import tempfile
 from collections.abc import Iterable, Iterator
 from pathlib import Path
@@ -32,11 +34,14 @@ class CodexRuntime:
             # --output-schema はファイルのパスを受け取る
             d = self.schema_dir or Path(tempfile.gettempdir())
             d.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(
-                "w", suffix=".json", dir=d, delete=False, encoding="utf-8"
-            ) as f:
-                json.dump(req.output_schema, f, ensure_ascii=False)
-            cmd += ["--output-schema", f.name]
+            # 名前を内容のハッシュにして使い回す。judge を Day の数だけ回してもファイルは増えない
+            body = json.dumps(req.output_schema, ensure_ascii=False, sort_keys=True)
+            path = d / f"schema-{hashlib.sha256(body.encode()).hexdigest()[:16]}.json"
+            if not path.exists():
+                tmp = path.with_suffix(f".{os.getpid()}.tmp")
+                tmp.write_text(body, encoding="utf-8")
+                tmp.replace(path)
+            cmd += ["--output-schema", str(path)]
         if req.model:
             cmd += ["--model", req.model]
         cmd.append(req.prompt)

@@ -17,7 +17,9 @@ Provider = Literal["claude", "chatgpt"]
 CONFIG_FILENAME = "edu-creator.toml"
 
 # 2026-11-08 のユーザーの前提: Claude は個人3・チーム1、ChatGPT（Codex）は1つ。
-# personal-1 は既定の置き場（~/.claude）を使う。手元の claude-team は ~/.claude-work を使っている。
+# personal-1 は ~/.claude を CLAUDE_CONFIG_DIR に明示して渡す。macOS では、環境変数を付けない素の `claude` の
+# ログインとは別のキーチェーン項目（Claude Code-credentials-<置き場の sha256 の先頭8桁>）になるので、
+# 普段のログインとは別に `edu-creator auth login` で入れる。手元の claude-team は ~/.claude-work を使っている。
 DEFAULT_ACCOUNTS: dict[Provider, dict[str, str]] = {
     "claude": {
         "personal-1": "~/.claude",
@@ -104,8 +106,11 @@ def load_accounts(path: Path | None = None, home: Path | None = None) -> Account
     if path is None:
         path = find_config()
     if path is not None:
-        with path.open("rb") as f:
-            data = tomllib.load(f)
+        try:
+            with path.open("rb") as f:
+                data = tomllib.load(f)
+        except OSError as e:
+            raise AccountError(f"設定ファイル {path} を読めない: {e.strerror}") from e
 
     def expand(p: str) -> Path:
         return Path(p.replace("~", str(home), 1) if p.startswith("~") else p)

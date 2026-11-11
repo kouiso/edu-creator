@@ -160,10 +160,14 @@ def _cmd_judge(args: argparse.Namespace) -> int:
         return 2
     if args.judge_cmd == "run":
         mat = spec_path.parent / spec.material_dir
+        chapter_files = {c.day: c.file for c in spec.chapters}
         failed = 0
         for d in days:
-            md = next(iter(sorted(mat.glob(f"day{d:02d}_*.md"))), None)
-            if md is None:
+            if spec.naming == "chapter-id":
+                md = mat / chapter_files[d] if d in chapter_files else None
+            else:
+                md = next(iter(sorted(mat.glob(f"day{d:02d}_*.md"))), None)
+            if md is None or not md.is_file():
                 print(f"FAIL Day{d:02d}: 本文が無い")
                 failed += 1
                 continue

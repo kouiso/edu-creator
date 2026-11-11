@@ -98,3 +98,38 @@ def test_missing_budget_is_an_error(tmp_path):
     r = run_check(get("budget"), mat, qa_config("flask", {}, tmp_path))
     assert r.returncode == 2
     assert "budget が渡されていない" in r.output
+
+
+APPLY_ONLY = """# Day 01 テスト
+
+**合計時間**: 約50分
+
+{blocks}
+"""
+
+
+def _apply_only_blocks(n: int) -> str:
+    return "\n".join(f"```python apply path=app/m{i}.py\nx = {i}\ny = {i}\n```\n" for i in range(n))
+
+
+def test_apply_path_blocks_count_toward_budget(tmp_path):
+    """目印の行が無く `apply path=` だけで書いたブロックも、ファイルと行に数える。"""
+    mat = tmp_path / "material"
+    mat.mkdir()
+    (mat / "day01_test.md").write_text(
+        APPLY_ONLY.format(blocks=_apply_only_blocks(7)), encoding="utf-8"
+    )
+    r = run_check(get("budget"), mat, qa_config("flask", {}, tmp_path, BUDGET))
+    assert r.returncode == 1, r.output
+    assert "| 01 | 14 ⚠ | 7 ❌ | 50 |" in r.output
+    assert "Day01 のファイル 7 > 2" in r.output
+
+
+def test_expect_only_info_path_is_not_counted(tmp_path):
+    mat = tmp_path / "material"
+    mat.mkdir()
+    body = "```python expect path=app/a.py\nx = 1\n```\n"
+    (mat / "day01_test.md").write_text(APPLY_ONLY.format(blocks=body), encoding="utf-8")
+    r = run_check(get("budget"), mat, qa_config("flask", {}, tmp_path, BUDGET))
+    assert r.returncode == 0, r.output
+    assert "| 01 | 0 | 0 | 50 |" in r.output

@@ -33,7 +33,7 @@ from curriculum_blocks import (  # noqa: E402
     _split_target,
     filepath_value,
 )
-from fence_roles import roles  # noqa: E402
+from fence_roles import apply_info_path, roles  # noqa: E402
 from markdown_scan import fence_states  # noqa: E402
 
 DEF_PATTERNS = [re.compile(p, re.M) for p in CONFIG.get("def_patterns", [])]
@@ -56,12 +56,14 @@ def writing_blocks(text: str) -> list[tuple[int, str, str]]:
     value: str | None = None
     lang = ""
     role: frozenset = frozenset()
+    info = ""
     start = 0
     for i, line, state, fence in fence_states(text):
         if state == "open":
             buf, value, start = [], None, i
             lang = fence.lang if fence else ""
-            role = roles(fence.info) if fence else frozenset()
+            info = fence.info if fence else ""
+            role = roles(info)
             continue
         if state == "inside":
             m = FILEPATH.match(line)
@@ -70,8 +72,9 @@ def writing_blocks(text: str) -> list[tuple[int, str, str]]:
                 continue
             buf.append(line)
             continue
-        if state == "close" and value is not None:
-            target, _ = _split_target(value)
+        raw = value if value is not None else apply_info_path(info)
+        if state == "close" and raw is not None:
+            target, _ = _split_target(raw)
             real = target.startswith(REAL_PREFIXES) or target in REAL_ROOT_FILES
             if real and lang in CODE_LANGS and "expect" not in role:
                 out.append((start, target, "\n".join(buf)))

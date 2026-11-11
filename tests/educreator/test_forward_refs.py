@@ -98,3 +98,16 @@ def test_approved_forward_ref_passes_with_reason(tmp_path):
     )
     assert rc == 0, out
     assert "了承済み" in out and "本文で説明" in out
+
+
+def test_apply_path_only_blocks_are_checked(tmp_path):
+    """目印の行が無く `apply path=` だけで書いたブロックも、前方参照の対象にする。"""
+    rc, out = _run(
+        tmp_path,
+        {
+            1: "```python apply path=app/a.py\ndef normalize(url):\n    return _postgres_url(url)\n```\n",
+            3: "```python apply path=app/a.py\ndef _postgres_url(url):\n    return url\n```\n",
+        },
+    )
+    assert rc == 1, out
+    assert "`app/a.py: _postgres_url`（Day01 で使い、定義は Day03）" in out

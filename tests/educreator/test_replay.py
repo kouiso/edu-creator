@@ -184,3 +184,79 @@ def test_login_shot_without_login_config_fails(tagged_repo, tmp_path):
         shots_dir=tmp_path / "s",
     )
     assert not r.ok and "replay.login が無い" in r.steps[-1]
+
+
+LOGIN_SERVER = """
+import http.server, sys, urllib.parse
+
+class H(http.server.BaseHTTPRequestHandler):
+    def _go(self, where, cookie=None):
+        self.send_response(302)
+        self.send_header("Location", where)
+        if cookie:
+            self.send_header("Set-Cookie", cookie)
+        self.end_headers()
+
+    def _page(self, body):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(body.encode())
+
+    def do_GET(self):
+        if self.path == "/login":
+            return self._page('<h1>LOGIN PAGE</h1><form method="post" action="/login">'
+                '<input name="pw" type="password"><button id="go">go</button></form>')
+        if self.path == "/tasks":
+            if "ok=1" in (self.headers.get("Cookie") or ""):
+                return self._page("<h1>TASKS</h1>")
+            return self._go("/login")
+        self.send_response(404)
+        self.end_headers()
+
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        pw = urllib.parse.parse_qs(self.rfile.read(n).decode()).get("pw", [""])[0]
+        if pw == "right":
+            return self._go("/tasks", "ok=1; Path=/")
+        return self._go("/login")
+
+    def log_message(self, *a):
+        pass
+
+http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+"""
+
+
+def _login_shot(tmp_path: Path, password: str) -> dict:
+    import socket
+    import time
+
+    from educreator.replay import take_shots
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    server = subprocess.Popen([sys.executable, "-c", LOGIN_SERVER, str(port)])
+    try:
+        time.sleep(0.5)
+        login = {"path": "/login", "fields": {"input[name=pw]": password}, "submit": "#go"}
+        shots = [{"name": "tasks", "path": "/tasks", "login": True}]
+        return take_shots(f"http://127.0.0.1:{port}", shots, login, tmp_path / "out")[0]
+    finally:
+        server.kill()
+        server.wait()
+
+
+@needs_playwright
+def test_wrong_password_does_not_pass_as_a_logged_in_shot(tmp_path):
+    """ログインに失敗してログイン画面（200）が撮れても、撮影は不合格にする。"""
+    r = _login_shot(tmp_path, "WRONG")
+    assert r["ok"] is False
+    assert "ログインが完了しなかった" in r["error"] or "/login" in r["error"]
+
+
+@needs_playwright
+def test_right_password_passes_as_a_logged_in_shot(tmp_path):
+    r = _login_shot(tmp_path, "right")
+    assert r["ok"] is True and r["status"] == 200

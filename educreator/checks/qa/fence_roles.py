@@ -39,6 +39,18 @@ def roles(info: str) -> frozenset:
     return frozenset(t for t in info.split() if t in ROLE_WORDS)
 
 
+def apply_info_path(info: str) -> str | None:
+    """`apply path=app/x.py` だけで書き込み先を示したブロックの、書き込み先を返す。
+
+    役割タグの記法（上の docstring）が正とする書き方。`# filepath:` の目印を本文に持たないので、
+    目印だけを見る数え方は、この書き方のブロックを丸ごと落とす。apply でなければ None（expect は適用しない）。
+    """
+    if "apply" not in roles(info):
+        return None
+    m = INFO_PATH.search(info)
+    return m.group(1) if m else None
+
+
 def has_safe_path_shape(rel_path: str) -> bool:
     """書き込み先として許すパス形か（prefix / root 一覧の形状判定のみ）。
 

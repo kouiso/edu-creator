@@ -153,6 +153,8 @@ def material_files(target: Path) -> list[Path]:
 def run_check(
     check: CheckDef, target: Path, config: dict[str, Any], timeout: float = 300
 ) -> CheckResult:
+    # 子プロセスは cwd=repo_root で動く。相対のままの対象は、そこから見て別の場所を指してしまう
+    target = target.resolve()
     env = dict(os.environ)
     env["EDU_CREATOR_QA_JSON"] = json.dumps(config, ensure_ascii=False)
     targets = material_files(target) if check.per_file else [target]

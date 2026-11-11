@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from _config import CODE_LANGS, CONFIG  # noqa: E402
 from curriculum_blocks import FILEPATH, REAL_PREFIXES, REAL_ROOT_FILES, _split_target, filepath_value  # noqa: E402
-from fence_roles import roles  # noqa: E402
+from fence_roles import apply_info_path, roles  # noqa: E402
 from markdown_scan import fence_states, strip_fences  # noqa: E402
 
 # 省略と置き場の目印の行（打たない）。`# ...`・`{# ... #}`・`// ...`・`<!-- ... -->` と、`◆` で始まる指示
@@ -53,11 +53,13 @@ def measure(text: str) -> dict:
     value: str | None = None
     lang = ""
     role: frozenset = frozenset()
+    info = ""
     for _i, line, state, fence in fence_states(text):
         if state == "open":
             buf, value = [], None
             lang = fence.lang if fence else ""
-            role = roles(fence.info) if fence else frozenset()
+            info = fence.info if fence else ""
+            role = roles(info)
             continue
         if state == "inside":
             m = FILEPATH.match(line)
@@ -66,8 +68,10 @@ def measure(text: str) -> dict:
                 continue
             buf.append(line)
             continue
-        if state == "close" and value is not None:
-            target, _note = _split_target(value)
+        # 書き込み先は本文の `# filepath:` の目印が先。無ければ `apply path=` の info から取る
+        raw = value if value is not None else apply_info_path(info)
+        if state == "close" and raw is not None:
+            target, _note = _split_target(raw)
             real = target.startswith(REAL_PREFIXES) or target in REAL_ROOT_FILES
             if real and lang in CODE_LANGS and "expect" not in role:
                 copy_lines += sum(1 for b in buf if b.strip() and not ELISION.match(b))

@@ -198,7 +198,11 @@ def _cmd_judge(args: argparse.Namespace) -> int:
             else ""
         )
         print(f"{dim:<17} X̄ {c.mean:.2f}  σ {c.sigma:.2f}{flag}")
-    problems = J.gate(reports, spec.judge.calibrated)
+    try:
+        problems = J.gate(reports, spec.judge.calibrated)
+    except ValueError as e:
+        print(f"エラー: {e}", file=sys.stderr)
+        return 2
     print(f"合否に使う次元（較正済み）: {', '.join(spec.judge.calibrated) or 'なし（参考値だけ）'}")
     for p in problems:
         print(f"  ❌ {p}")

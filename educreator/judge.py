@@ -193,6 +193,13 @@ def gate(
     each_min: float = 4.0,
 ) -> list[str]:
     """較正済みの次元だけで R-6 を判定する（2系統の平均 ≥ 4.5、各 Day の各次元 ≥ 4.0）。問題を返す。"""
+    known = {k for k, _ in DIMENSIONS}
+    unknown = [d for d in calibrated if d not in known]
+    if unknown:
+        # 綴りの違いで KeyError の traceback になったり、較正したつもりの次元が黙って合否から外れたりしない
+        raise ValueError(
+            f"judge.calibrated に知らない次元がある: {unknown}（使える: {sorted(known)}）"
+        )
     problems: list[str] = []
     for dim in calibrated:
         vals = [int(r["scores"][dim]) for r in reports]

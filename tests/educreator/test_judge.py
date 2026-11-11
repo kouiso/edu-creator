@@ -49,3 +49,18 @@ def test_gate_uses_only_calibrated_dimensions():
     problems = gate(reports, calibrated=["engagement"])
     assert "Day01 の engagement 2.00 < 4.0" in problems
     assert any(p.startswith("engagement の平均") for p in problems)
+
+
+def test_save_then_load_all_round_trips(tmp_path):
+    from educreator.judge import load_all, save
+
+    r = parse(3, "A", "personal-1", _structured(4, clarity=2))
+    path = save(r, tmp_path / "judge")
+    assert path.name == "day03-A.json"
+    (loaded,) = load_all(tmp_path / "judge")
+    assert loaded["day"] == 3 and loaded["judge"] == "A" and loaded["scores"]["clarity"] == 2
+
+
+def test_gate_rejects_unknown_calibrated_dimension():
+    with pytest.raises(ValueError, match="知らない次元"):
+        gate([_report(1)], calibrated=["clarty"])

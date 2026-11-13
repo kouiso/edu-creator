@@ -1,13 +1,14 @@
 """edu-creator 3.0 のコマンド。
 
-今ある段: auth（login / status）、spec（check）、check（教材の検査）、replay（写経リプレイ）、lessons（check）。
-plan・design・stage・write・gate・package などは WBS の順（A3〜A13）で足す。
+今ある段: auth（login / status）、spec（check）、check（教材の検査）、write（Step を 1 つ書く）、replay（写経リプレイ）、lessons（check）。
+plan・design・stage・gate・package などは WBS の順（A3〜A13）で足す。
 """
 
 from __future__ import annotations
 
 import argparse
 import contextlib
+import json
 import sys
 from pathlib import Path
 
@@ -102,6 +103,66 @@ def _cmd_check(args: argparse.Namespace) -> int:
                 print(r.output)
     print(f"{len(selected) - failed}/{len(selected)} 件通過")
     return 1 if failed else 0
+
+
+def _cmd_write(args: argparse.Namespace) -> int:
+    from pydantic import ValidationError
+
+    from educreator import cassette as C
+    from educreator import skill
+    from educreator import write as W
+    from educreator.accounts import AccountError, load_accounts
+    from educreator.profiles import load_profile
+    from educreator.spec import load_spec
+
+    spec_path = Path(args.spec)
+    cassette = Path(args.cassette) if args.cassette else None
+    replay = cassette is not None and not args.record
+    account = None
+    state_dir = None
+    try:
+        spec = load_spec(spec_path)
+        chapter = next((c for c in spec.chapters if c.day == args.day), None)
+        if chapter is None:
+            raise ValueError(f"{spec_path} の chapters に Day {args.day} が無い")
+        profile = load_profile(spec.stack_profile)
+        if not replay:
+            cfg = load_accounts(Path(args.config) if args.config else None)
+            account = cfg.get(args.provider, args.account)
+            state_dir = cfg.state_dir
+    except (ValidationError, ValueError, AccountError, OSError) as e:
+        print(f"エラー: {e}", file=sys.stderr)
+        return 2
+    base = spec_path.parent
+    tree = Path(args.tree) if args.tree else base
+    task = W.StepTask(
+        day=args.day,
+        goal=args.goal,
+        verify=args.verify,
+        material=base / spec.material_dir / chapter.file,
+        context=args.context,
+    )
+    # skill を使う教材だけ、skill と教材に固有の値を渡す。使わない教材は依頼文を変えない（録画の鍵が変わらない）
+    req = W.request_for(
+        task,
+        tree,
+        profile,
+        spec.budget.code_block_lines,
+        args.max_files,
+        skills=tuple(spec.skills),
+        course_facts=skill.course_facts(spec) if spec.skills else "",
+    )
+    try:
+        res = W.write_step(req, account, cassette, args.record, state_dir)
+    except C.CassetteMismatch as e:
+        print(f"エラー: {e}", file=sys.stderr)
+        return 1
+    print(json.dumps(res.structured, ensure_ascii=False, indent=2))
+    if not res.ok:
+        print(
+            f"エラー: 実行が失敗した（終了コード {res.returncode}）\n{res.stderr}", file=sys.stderr
+        )
+    return 0 if res.ok else 1
 
 
 def _cmd_replay(args: argparse.Namespace) -> int:
@@ -270,6 +331,23 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--list", action="store_true", help="検査の一覧を出す")
     c.add_argument("-v", "--verbose", action="store_true", help="落ちた検査の出力を全部出す")
     c.set_defaults(func=_cmd_check)
+
+    w = sub.add_parser(
+        "write", help="Day の末尾に Step を 1 つ書く（A5）。--cassette だけなら録画の再生"
+    )
+    w.add_argument("--spec", default="course-spec.yaml")
+    w.add_argument("--day", type=int, required=True)
+    w.add_argument("--goal", required=True, help="この Step でやること")
+    w.add_argument("--verify", required=True, help="動かして確かめる命令")
+    w.add_argument("--context", default="", help="前の Day までに説明した用語")
+    w.add_argument("--tree", help="作業ツリー（省略で spec のあるフォルダ）")
+    w.add_argument("--max-files", type=int, default=1)
+    w.add_argument("--provider", choices=["claude", "chatgpt"], default="claude")
+    w.add_argument("--account", default="personal-1")
+    w.add_argument("--config", help="edu-creator.toml のパス")
+    w.add_argument("--cassette", help="録画の JSON。--record が無ければ再生する（LLM を呼ばない）")
+    w.add_argument("--record", action="store_true", help="実行して --cassette に録画する")
+    w.set_defaults(func=_cmd_write)
 
     rp = sub.add_parser(
         "replay", help="Day ごとのツリーを入れて起動し、画面が返るかを確かめる（A4）"

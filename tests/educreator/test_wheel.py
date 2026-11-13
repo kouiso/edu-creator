@@ -54,6 +54,13 @@ def test_wheel_contains_both_entry_points(wheel_dir):
     assert any(f.startswith("educreator/profiles/") and f.endswith(".yaml") for f in files)
 
 
+def test_wheel_contains_agent_skill_files(wheel_dir):
+    files = {p.relative_to(wheel_dir).as_posix() for p in wheel_dir.rglob("*") if p.is_file()}
+    assert "educreator/agent-skill/material-writing/SKILL.md" in files
+    assert "educreator/agent-skill/material-writing/hook/material_writing_gate.py" in files
+    assert "educreator/agent-skill/material-writing/reference/voice-spec.md" in files
+
+
 def test_wheel_imports_without_repo_checkout(wheel_dir, tmp_path):
     proc = subprocess.run(
         [

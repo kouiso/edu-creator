@@ -11,24 +11,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import tempfile
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
-from educreator.runtime.base import AgentRequest, Event, json_lines
-
-
-def _private_schema_dir() -> Path:
-    """既定のスキーマ置き場。共有の一時フォルダ直下ではなく、自分だけが入れるフォルダにする。"""
-    d = Path(tempfile.gettempdir()) / f"edu-creator-{os.getuid()}"
-    d.mkdir(mode=0o700, exist_ok=True)
-    st = d.lstat()
-    # 別のユーザーが先に作った物や symlink は使わない（同名のスキーマを仕込まれると、依頼と違う形を Codex に渡してしまう）
-    if d.is_symlink() or st.st_uid != os.getuid() or st.st_mode & 0o077:
-        raise PermissionError(
-            f"{d} が自分専用でない（所有者か権限が違う）。schema_dir を指定してほしい"
-        )
-    return d
+from educreator import skill
+from educreator.runtime.base import AgentRequest, Event, json_lines, private_dir
 
 
 class CodexRuntime:
@@ -50,13 +37,15 @@ class CodexRuntime:
         # permission_mode の対応: 読むだけのレビューは read-only、書く作業は workspace-write
         sandbox = "read-only" if req.permission_mode in ("plan", "read-only") else "workspace-write"
         cmd += ["--sandbox", sandbox]
+        # config.toml を読ませない（使う人の設定が Step の書き方に割り込まない）。ログインは CODEX_HOME のまま使える
+        cmd.append("--ignore-user-config")
         if req.output_schema is not None:
             # --output-schema はファイルのパスを受け取る
             if self.schema_dir is not None:
                 d = self.schema_dir
                 d.mkdir(parents=True, exist_ok=True)
             else:
-                d = _private_schema_dir()
+                d = private_dir()
             # 名前を内容のハッシュにして使い回す。judge を Day の数だけ回してもファイルは増えない
             body = json.dumps(req.output_schema, ensure_ascii=False, sort_keys=True)
             path = d / f"schema-{hashlib.sha256(body.encode()).hexdigest()[:16]}.json"
@@ -68,7 +57,8 @@ class CodexRuntime:
             cmd += ["--output-schema", str(path)]
         if req.model:
             cmd += ["--model", req.model]
-        cmd.append(req.prompt)
+        # Codex は Claude Code の plugin を読まないので、skill の本文をプロンプトの頭に埋め込む（hook は動かない）
+        cmd.append(skill.embed(req.skills) + "\n\n" + req.prompt if req.skills else req.prompt)
         return cmd
 
     def parse(self, lines: Iterable[str]) -> Iterator[Event]:

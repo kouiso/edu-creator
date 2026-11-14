@@ -1,11 +1,9 @@
 # 書き方の決まり（skill）とプロンプトの組み込み
 
 ほかの教材づくりの場（Flask 版と Next.js 版の 2 つの教材リポジトリ。`docs/checks.md` と同じ呼び方）で育った書き方の決まりを、
-edu-creator 3.0（`educreator/`）が Step を書く実行に渡す仕組みの設計。実装は WBS の手順 11（PR-B）で行う。
-
-この文書では、**今ある物**と**手順 11 で足す物**を分けて書く。2026-11-13 の `origin/develop`（563a2f8）の時点で、
-`educreator/` の中に skill を読む処理は 1 つも無い（`educreator/` の `.py` に `skills/` も `prompt/` も出てこない）。
-下の「手順 11 で足す」と書いた関数・引数・キー・ファイルは、まだ無い。
+edu-creator 3.0（`educreator/`）が Step を書く実行に渡す仕組みの設計。この文書は、WBS の手順 11（PR-B）で作った物を書く。
+skill を読む処理は `educreator/skill.py`、skill の本文と hook は `educreator/agent-skill/`、試験は `tests/educreator/` にある。
+行番号を書いた箇所は、この設計を入れたコミットの時点のファイルの行（関数の名前も併記する）。
 
 何を移すかの決定は、決定表（385 行。列は `repo`・`path`・`blob_sha`・`verdict`・`reason`・`scan`）で行った。
 行番号はファイルの行番号（見出しの行が 1 行目）で書く。
@@ -56,7 +54,7 @@ hook のファイル名だけ下線でつなぐのは、試験から `import` �
 | 156 | 元の skill／hook／プロンプトの文書（決定表の 156 行） | `educreator/agent-skill/material-writing/hook/material_writing_marker.py` | Python に書き直す。印の置き場は `target.json` の `marker_dir`（元のリポジトリの名前が入った一時フォルダは使わない）。skill の名前に `material-writing` を含むかの照合は残す（下の 2 の名前 `edu-creator:material-writing` も含むため） |
 | 158 | 元の skill／hook／プロンプトの文書（決定表の 158 行） | `educreator/agent-skill/material-writing/SKILL.md` | 節ごとの扱いは下の表。全体から消す物: 元の文書にあった人物設定に固有の言い回しと方言の例、目印の文字列、姉妹のリポジトリの名前、写しを同期する道具の説明、元に残る道具（文章の lint とその包み）への参照 |
 | 178 | 元の skill／hook／プロンプトの文書（決定表の 178 行） | `educreator/agent-skill/material-writing/reference/attribution.md` | 「同梱」から「参照」に書き直す。中身は下の「出典の書き方」。同梱した置き場、sha256 の一覧、元のリポジトリの出来事の記録、元に残る道具の呼び方を消す |
-| 179 | 元の skill／hook／プロンプトの文書（決定表の 179 行） | `educreator/agent-skill/material-writing/reference/voice-spec.md` | 床・天井・客観ルーブリックを残す。消す物: 名前の出る外部の読み手、比べた他の教材の名前、購入の逸話、元の検査の名前、30 日の教材の置き場 |
+| 179 | 元の skill／hook／プロンプトの文書（決定表の 179 行） | `educreator/agent-skill/material-writing/reference/voice-spec.md` | 床・天井・客観ルーブリックを残す。消す物: 名前の出る外部の読み手、比べた他の教材の名前、購入の逸話、元の検査の名前、教材の置き場 |
 | 210 | 元の skill／hook／プロンプトの文書（決定表の 210 行） | `educreator/agent-skill/curriculum-quality-gate/SKILL.md` | 元のスクリプトと textlint の命令の一覧を消す。代わりに「検査は edu-creator が Step の後に回す。この実行の中では検査の命令を打たない」と書き、どの検査がいつ回るか（下の 2 の「Step の実行と関門」）を写す。教材の置き場と、技術の組み合わせの例を消す。先頭の `applyTo` を消し、`name: curriculum-quality-gate` と `description` の frontmatter に直す（skill として選べるようにするため） |
 
 ### 行 158（`material-writing` の SKILL.md）の節ごとの扱い
@@ -112,14 +110,14 @@ hook のファイル名だけ下線でつなぐのは、試験から `import` �
 - `prompt/`（`agent/`・`task/`・`teaching.py`）は旧版の `core/agent_factory.py` が import するプロンプト。3.0 は読まない。変えない。
 - `prompt/instructions/` は、このリポジトリを直す AI への決まり（実行時の教材づくりの決まりではない）。変えない。
 - wheel: `pyproject.toml` の `packages` に `educreator` があり、`educreator/profiles/*.yaml` と同じく `.md`・`.py` も入る。
-  手順 11 で `tests/educreator/test_wheel.py` に `educreator/agent-skill/material-writing/SKILL.md` が wheel にある事の確かめを足す。
+  `tests/educreator/test_wheel.py` に、`educreator/agent-skill/material-writing/SKILL.md` が wheel にある事の確かめがある。
 
 ## 2. 実行時にどう読み込まれるか
 
 skill は Step を書く実行（`educreator/write.py`）にだけ渡す。`check`・`replay`・`design`・`judge` は skill を使わない
 （Judge には書き方の決まりを渡さない。採点と書き方の物差しを分けておくため）。
 
-### 共通（手順 11 で足す）
+### 共通
 
 - `educreator/runtime/base.py` の `AgentRequest` に 2 つの欄を足す。
   - `skills: tuple[str, ...] = ()` … 渡す skill の名前（`educreator/agent-skill/` の下のフォルダ名）。並びは course-spec に書いた順
@@ -127,9 +125,9 @@ skill は Step を書く実行（`educreator/write.py`）にだけ渡す。`chec
 - `educreator/write.py` の `request_for` に引数を 2 つ足す: `request_for(task, tree, profile, block_lines, max_files, skills=(), course_facts="")`。
   - `skills=skills`・`guarded_dir=task.material.parent` を `AgentRequest` に入れる。`skills` が空でなければ `allowed_tools` に `"Skill"` を足す
   - `course_facts` は `PROMPT` の `{context}` の次の行に入れる（下の 4。依頼文に入るので録画の鍵にも入る）
-  - 今は `cli.py` に `write` の段が無く、`request_for` を呼ぶのは `tests/educreator/e2e_task.py` だけ。
-    WBS の A5 で `write` の段を足す時に、`load_spec` で読んだ spec から `skills=tuple(spec.skills)` と
-    `course_facts=skill.course_facts(spec)` を作って渡す
+  - `educreator/cli.py` の `_cmd_write`（108〜165 行）が `write` の段で、`load_spec` で読んだ spec から `skills=tuple(spec.skills)` と
+    `course_facts=skill.course_facts(spec) if spec.skills else ""`（153 行）を作って `request_for` に渡す。
+    `skills` が空の教材では `course_facts` も空で、依頼文は skill を入れる前と同じになる（録画の鍵が変わらない）。`request_for` はほかに `tests/educreator/e2e_task.py` も呼ぶ
 - 新しいモジュール `educreator/skill.py` を足す。中身は次のとおり（版の確かめの `claude_version` は下の Claude の節）。
   - `SKILL_DIR = Path(__file__).parent / "agent-skill"`
   - `available_skills() -> list[str]` … `SKILL_DIR` の下で `SKILL.md` を持つフォルダの名前を並べて返す
@@ -139,8 +137,8 @@ skill は Step を書く実行（`educreator/write.py`）にだけ渡す。`chec
   - `source_digest(names) -> str` … 選んだ skill を `course-spec` の順に、`"<名前>\0" + tree_hash(SKILL_DIR / 名前, SOURCE_GLOBS)` をつないだ文字列の sha256。録画の照合だけに使う
   - `course_facts(spec) -> str` … 下の 4 の表の行を作る
   - `stage_plugin(names, guarded_dir) -> Path` と `embed(names) -> str` … 下の Claude と Codex で使う
-- 一時の置き場は、今 `educreator/runtime/codex.py` の 21〜31 行にある `_private_schema_dir()`（自分だけが入れる `edu-creator-<uid>` のフォルダ。
-  ほかのユーザーの物や symlink なら `PermissionError`）を `educreator/runtime/base.py` の `private_dir()` に移して、スキーマ・plugin・印の 3 つで使う。
+- 一時の置き場は `educreator/runtime/base.py` の `private_dir()`（61〜69 行。自分だけが入れる `edu-creator-<uid>` のフォルダ。
+  ほかのユーザーの物や symlink なら `PermissionError`）。以前は `codex.py` の中にあった物を移し、スキーマ・plugin・印の 3 つで使う。
 
 ### Claude（`claude -p`）
 
@@ -154,7 +152,7 @@ Claude Code の plugin として、その実行の間だけ読み込ませる。
    - `hooks/target.json` … `{"guarded_dir": "<守るフォルダ>", "marker_dir": "<private_dir()/marker>"}`。どちらも `os.path.realpath` を通した絶対パス
      （macOS の `/var` と `/private/var` のように、同じ所が 2 つの名前で見えるのをそろえるため）
 2. 名前の 16 桁と `digest.txt` は、作る時も使い回す時も同じ 1 つの値 `H = tree_hash(<plugin の edu-creator/ のフォルダ>, PLUGIN_GLOBS)` で決める
-   （`digest.txt` は `edu-creator/` の外の `plugin-…/` 直下に置くので数に入らない。hook が `hooks/__pycache__/` を作っても `PLUGIN_GLOBS` に当たらないので `H` は変わらない）。作り方は `codex.py` の 63〜67 行（スキーマのファイル）と同じ考えにする。
+   （`digest.txt` は `edu-creator/` の外の `plugin-…/` 直下に置くので数に入らない。hook が `hooks/__pycache__/` を作っても `PLUGIN_GLOBS` に当たらないので `H` は変わらない）。作り方は `codex.py` の 49〜57 行（スキーマのファイル）と同じ考えにする。
    - 作る時: `private_dir()` の下に `plugin-new.<pid>.<乱数>.tmp/` を作り、`edu-creator/` 以下を全部書く。`H` を計算し、`digest.txt` に `H` を書き、
      `os.rename` で `plugin-<H の頭 16 桁>` にする。同じ名前が先にあれば（別の実行が先に作った）、名前を変えずに、先の物を下の使い回しの手順で確かめて使う。
      自分の一時フォルダは、名前を変えなかった時だけ消す（中身は自分しか使っていない）
@@ -182,7 +180,7 @@ Claude Code の plugin として、その実行の間だけ読み込ませる。
 付けないと、PreToolUse の hook の失敗は「止めない誤り」として扱われ、操作はそのまま進む（同じ文書の「Other exit codes」）。
 関門だけに付ける。案内（reminder）と印（marker）が落ちても、関門が印の無い書き込みを止めるので、止める側は関門 1 か所で足りる。
 `onFailure` を読まない古い Claude Code では関門が失敗した時に通ってしまうので、版を確かめる。確かめるのは `stage_plugin` ではなく
-`ClaudeCodeRuntime` で、`run()` が起動するのと同じ `self.executable`（`educreator/runtime/claude_code.py` の 22〜23 行）を見る。手元の PATH に版の違う `claude` が
+`ClaudeCodeRuntime` で、`run()` が起動するのと同じ `self.executable`（`educreator/runtime/claude_code.py` の 26 行）を見る。手元の PATH に版の違う `claude` が
 複数あっても、確かめる物と動かす物がずれない。
 
 - `ClaudeCodeRuntime.__init__(self, executable="claude", version_probe=None)` に引数を 1 つ足す。`version_probe` は「版の文字列を返す関数」で、
@@ -283,7 +281,7 @@ edu-creator は Codex の skill の置き場は使わず、skill の本文をプ
 書き込みを止める hook があれば Step が書けない。hook と、有効にした plugin の一覧は、どちらも設定のファイルに書かれる。
 だから `ClaudeCodeRuntime.build_command` は、skill の有無に依らず毎回 `--setting-sources project,local` を付け、使う人の設定のファイル（user）を読ませない
 （`claude --help` 2.1.322 の「Comma-separated list of setting sources to load (user, project, local)」）。
-`--plugin-dir` は設定のファイルではなく命令の引数なので、edu-creator の plugin はこれでも読み込まれる（手順 11 の実機の確かめに入れる）。
+`--plugin-dir` は設定のファイルではなく命令の引数なので、edu-creator の plugin はこれでも読み込まれる（上の本物の `claude` の確かめに入れる）。
 project と local は作業フォルダ（学習者のツリー）の `.claude/` で、教材のリポジトリの持ち物なので残す。
 `--bare`・`--safe-mode` は使わない。`--bare` はサブスクのログイン（OAuth）を読まず、`--safe-mode` は skill と plugin の読み込みも止める（`claude --help` 2.1.322）。
 
@@ -293,22 +291,22 @@ project と local は作業フォルダ（学習者のツリー）の `.claude/`
 2. edu-creator の skill は `edu-creator:<名前>` の名前つきで、Codex には本文をそのまま埋め込むので、手元の同じ名前の skill と取り違えない
 
 これも切り離したい人は、`edu-creator.toml` で edu-creator 専用の `config_dir` をアカウントごとに作ればよい（その置き場で `edu-creator auth login` する）。
-README の認証の節に、この 1 行を足す（手順 11）。
+README には認証の節が無いので、README は変えない。`config_dir` をアカウントごとに分ける書式は `docs/auth-design.md` の 2（`edu-creator.toml` と `--config`）にあり、その置き場で `edu-creator auth login` する。
 
 **Codex の設定のファイル: 切り離す。** `CodexRuntime.build_command` は毎回 `--ignore-user-config` を付け、`CODEX_HOME` の `config.toml` を読ませない
 （`codex exec --help` 0.166.0 の「Do not load `$CODEX_HOME/config.toml`; auth still uses `CODEX_HOME`」。ログインはそのまま使える）。
 
-手順 11 の本物の `claude` の 1 回（下の 6 の終わり）で、次の 3 つを見る: `--setting-sources project,local` でもサブスクのログインで動く
-（`system` の `init` の `apiKeySource` が `none`。`educreator/runtime/claude_code.py` の 53〜62 行が拾う）、plugin の関門の hook が書き込みを止める、
+本物の `claude` を 1 回打つ確かめ（下の 6 の終わり）で、次の 3 つを見る: `--setting-sources project,local` でもサブスクのログインで動く
+（`system` の `init` の `apiKeySource` が `none`。`educreator/runtime/claude_code.py` の 85〜95 行（`parse`）が拾う）、plugin の関門の hook が書き込みを止める、
 使う人の設定が読まれていない（`init` の行の plugin の一覧に、使う人が有効にした plugin が無く edu-creator だけがある。
 使う人の設定に要約の hook がある手元なら、Step の確認の出力が要約されていない）。使う人の設定のファイルは書き換えない。
-`init` の行に plugin の一覧が出ない版だった時は、そこまでを手順 11 の報告に「確かめられなかった」と書く。
+`init` の行に plugin の一覧が出ない版だった時は、そこまでを報告に「確かめられなかった」と書く。
 Codex の方は、ログインが切れていて今は打てない（`educreator/runtime/codex.py` の 1〜7 行）。打てるようになった時に、同じ形で `--ignore-user-config` でもログインで動く事を見る。
 
 ### 録画（カセット）
 
 `educreator/write.py` の `_request_key` は命令の引数を見ないので、skill の中身を直しても古い録画が再生されてしまう。
-手順 11 で、`req.skills` が空でない時だけ `"skills": list(req.skills)` と `"skills_digest": skill.source_digest(req.skills)` を鍵に足す。
+`_request_key`（`educreator/write.py` の 119 行〜）は、`req.skills` が空でない時だけ `"skills": list(req.skills)` と `"skills_digest": skill.source_digest(req.skills)` を鍵に足す。
 空の時は鍵を変えないので、今ある録画（`tests/educreator/fixtures/`）はそのまま通る。`course_facts` と下の検査の結果の行は依頼文に入るので、今の `"prompt"` の鍵で照合される。
 `--setting-sources` と `--ignore-user-config` は命令の引数で、どの依頼でも同じなので鍵に入れない。
 
@@ -319,13 +317,13 @@ Codex の方は、ログインが切れていて今は打てない（`educreator
 | 関門 | どこで回るか |
 |---|---|
 | 書く前の 6 つの手順・文体の仕様・床と天井 | この実行の中。エージェントが skill を読んで守る（Claude は関門の hook が読んだ事を確かめる） |
-| Step ごとの検査 | 実行の後に、A5 の `write` の段が `edu-creator check` と同じ `checks.run_check` で、`step-length`・`code-completeness`・`anchor`・`setext-heading`・`forward-refs` の 5 本を**教材のフォルダ**（`StepTask.material` の親。naming が chapter-id なら `educreator/cli.py` の 88〜92 行と同じ `checks.day_view` を通した物）に回す。Day のファイル 1 つを渡すと、`forward-refs` はそのパスの下から `day[0-9][0-9]_*.md` を探して見つからず、2 で終わる（`educreator/checks/qa/check_forward_refs.py` の 128〜131 行）。1 Step だけの Day でこの 5 本が通る事は、`tests/educreator/test_e2e_fixture.py` の 63〜70 行が教材のフォルダ（`tree / "material"`）を渡して確かめている。前の Day も一緒に見るが、前の Day はその Day の終わりに通っているので、落ちたら今の Step が原因 |
+| Step ごとの検査 | 実行の後に、A5 の `write` の段が `edu-creator check` と同じ `checks.run_check` で、`step-length`・`code-completeness`・`anchor`・`setext-heading`・`forward-refs` の 5 本を**教材のフォルダ**（`StepTask.material` の親。naming が chapter-id なら `educreator/cli.py` の 89〜93 行と同じ `checks.day_view` を通した物）に回す。Day のファイル 1 つを渡すと、`forward-refs` はそのパスの下から `day[0-9][0-9]_*.md` を探して見つからず、2 で終わる（`educreator/checks/qa/check_forward_refs.py` の 128〜131 行）。1 Step だけの Day でこの 5 本が通る事は、`tests/educreator/test_e2e_fixture.py` の `test_step_checks_take_material_dir`（133〜147 行）が教材のフォルダ（`tree / "material"`）を渡して確かめている。前の Day も一緒に見るが、前の Day はその Day の終わりに通っているので、落ちたら今の Step が原因 |
 | Day の全部の検査 | その Day の最後の Step を書いた後に、22 本全部（`edu-creator check --spec <course-spec>`）。`budget` は `**合計時間**` が無い Day を落とす（`docs/checks.md` の 88 行）ので、Day の途中では回さない |
 | 冷えた読み手（元の Gate 3） | Day を書き終えた後の `edu-creator judge run`（A6）。書いた会話と別のエージェントが採点する。読み手像は `learner.description` |
 
-#### 検査に落ちた時の直させ方（手順 11 で足す）
+#### 検査に落ちた時の直させ方
 
-`context` は使わない。`context` は「前の Day までに説明した用語」の行として描かれ（`educreator/write.py` の 68 行）、
+`context` は使わない。`context` は「前の Day までに説明した用語」の行として描かれ（`educreator/write.py` の 91 行）、
 `PROMPT` は新しい Step を末尾に足させる（同 38 行と 44 行）ので、そこに入れると検査の結果が用語として届き、直さずに Step を増やしてしまう。
 
 - `StepTask` に欄 `fix: str = ""`（落ちた検査の ID と出力）を足す
@@ -352,7 +350,7 @@ Codex の方は、ログインが切れていて今は打てない（`educreator
 
 ## 3. 教材ごとの選び方（`course-spec.yaml` の `skills`）
 
-`educreator/spec.py` の `CourseSpec` に 1 つキーを足す（手順 11）。
+`educreator/spec.py` の `CourseSpec`（111〜132 行）に、キー `skills` を 1 つ足した。
 
 | 項目 | 値 |
 |---|---|
@@ -367,7 +365,7 @@ skills:
   - curriculum-quality-gate
 ```
 
-検める決まりは、今ある `_known_profile`（`educreator/spec.py` の 139〜145 行）と同じ形の `field_validator("skills")` で書く。
+検める決まりは、今ある `_known_profile`（`educreator/spec.py` の 155〜161 行）と同じ形の `field_validator("skills")`（`_known_skills`、134〜145 行）で書いた。
 
 - 知らない名前: `ValueError(f"skill '{name}' は無い。使えるもの: {', '.join(available_skills())}")`
 - 同じ名前が 2 回: `ValueError(f"skills に同じ名前が 2 回ある: {dups}")`
@@ -378,22 +376,25 @@ skills:
 | 命令 | 出力 | 終了コード |
 |---|---|---|
 | `edu-creator spec check <spec>` | 標準エラーに `<spec>: スキーマに合わない` と、上の文を含む pydantic の文 | 1 |
+| `edu-creator write` | 標準エラーに `エラー: ` と、上の文を含む pydantic の文（`_cmd_write` の 133〜135 行） | 2 |
 | `edu-creator check`・`replay`・`judge`・`design` | 標準エラーに `エラー: ` と、上の文を含む pydantic の文 | 2 |
 
-この表は `educreator/cli.py` の `_cmd_spec`（40〜42 行）と `_cmd_check`（78〜80 行）の今の作りから書いた。
-`skills` についての動きは、手順 11 の試験で確かめる（まだ実行していない）。
+この表は `educreator/cli.py` の `_cmd_spec`（41〜43 行）、`_cmd_check`（79〜81 行）、`_cmd_write`（133〜135 行）の作りから書いた。
+`skills` についての動きは `tests/educreator/test_spec_lessons.py` の `test_spec_skills_default_is_empty_and_names_are_kept_in_order`（238 行）・
+`test_spec_skills_unknown_name_and_duplicates_are_rejected`（244 行）・`test_spec_skills_cli_exit_codes`（253 行）が確かめる。
+実行の結果: @@TESTRESULT@@
 
 ## 4. 教材に固有の内容の出どころ
 
 アプリの名前・画面・顧客・Day ごとの予定など、教材に固有の内容は edu-creator に置かない。`educreator/agent-skill/` の文は
 どの教材にも同じ文で、固有の値は実行の時に、edu-creator が依頼文へ入れた物と作業フォルダから読む。
-エージェントは course-spec を読まない（作業フォルダは学習者のツリーで、course-spec は無い。`educreator/write.py` の 82 行で `cwd=tree`）。
+エージェントは course-spec を読まない（作業フォルダは学習者のツリーで、course-spec は無い。`educreator/write.py` の 109 行で `cwd=tree`）。
 
 | 内容 | 出どころ | エージェントへの届き方 |
 |---|---|---|
-| 教材の名前・学習者像・日数・配布の形・stack profile | `course-spec.yaml` の `name`・`learner.description`・`days`・`distribution.formats`・`stack_profile` | A5 の `write` の段が `skill.course_facts(spec)` で次の形の行にし、`request_for` の `course_facts` で依頼文に入れる: `- 教材: <name>（全 <days> 日。配布: <formats>。技術: <stack_profile>）` と `- 学習者: <learner.description>` |
+| 教材の名前・学習者像・日数・配布の形・stack profile | `course-spec.yaml` の `name`・`learner.description`・`days`・`distribution.formats`・`stack_profile` | `_cmd_write` が、`spec.skills` がある時だけ `skill.course_facts(spec)` で次の形の行にし、`request_for` の `course_facts` で依頼文に入れる（`skills` が無い教材では入れない）: `- 教材: <name>（全 <days> 日。配布: <formats>。技術: <stack_profile>）` と `- 学習者: <learner.description>` |
 | 1 つのコードブロックの行数・1 回に変えるファイルの数 | `budget.code_block_lines`・`budget.files` | 今の `request_for` の `block_lines`・`max_files`（`PROMPT` の 42 行と 49 行） |
-| 今回書く Day・書き先・やること・確かめ方・前の Day までの用語 | `StepTask` | 今の `PROMPT`（`educreator/write.py` の 35〜51 行） |
+| 今回書く Day・書き先・やること・確かめ方・前の Day までの用語 | `StepTask` | 今の `PROMPT`（`educreator/write.py` の 35〜51 行の `PROMPT`） |
 | 画面・ルート・実際のコード | 作業フォルダ（前の Step までの学習者のツリー） | エージェントが自分で読む |
 | 守る教材のフォルダ | `StepTask.material` の親 | `AgentRequest.guarded_dir`。Claude の hook は `target.json` |
 | 持ち主の決定・その教材だけの制約 | 対象の教材のリポジトリに残る（決定表で `stay-in-source` にした物） | 渡さない。edu-creator には写さない |
@@ -404,10 +405,10 @@ skill の文がエージェントに打たせる命令は無い（検査は上�
 目的は依頼文の「教材」と「学習者」の行、完了の定義は「教材」の行の日数と配布の形、制約は依頼文のコードブロックの行数とファイルの数。
 持ち主の決定・次の一手の選び方・止まって聞くときは、教材に依らない決まりだけを書く。
 
-固有の物が入っていない事は、手順 11 で次の 2 つで確かめる。
+固有の物が入っていない事は、次の 2 つで確かめる。
 
-- `tests/educreator/test_spec_lessons.py` の `test_no_hardcoded_stack_names_outside_profiles`（E-4。129〜137 行）が見るファイルに、
-  `educreator/agent-skill/` の下の `.md` を足す（今は `educreator/` の `.py` だけを見る。hook の `.py` は今のままで見られる）
+- `tests/educreator/test_spec_lessons.py` の `test_no_hardcoded_stack_names_outside_profiles`（E-4。129〜137 行）は、`educreator/` の `.py` に加えて
+  `educreator/agent-skill/` の下の `.md` も見る（hook の `.py` は `educreator/` の `.py` として見られる）
 - コミットの前に、禁止語の守り（`scripts/guard/check-forbidden.sh`。pre-commit で動く）が当たり 0 件
 
 ## 5. 理想案と現実案
@@ -439,7 +440,7 @@ mkdir -p <取り出し先>
 git -C <取り込み元の clone> archive <取り込み元の既定のブランチ> | tar -x -C <取り出し先>
 ```
 
-`<取り出し先>/course-spec.yaml` を書く。`CourseSpec`（`educreator/spec.py` の 110〜129 行）の必須のキーを全部書く。
+`<取り出し先>/course-spec.yaml` を書く。`CourseSpec`（`educreator/spec.py` の 111〜132 行）の必須のキーを全部書く。
 比べるのに効くのは `stack_profile`・`app_repo`・`material_dir`・`naming`・`qa` だけで、ほかの値は形が通れば何でもよい
 （`budget` の値を使う検査は `budget` だけで、これは元が無い行）。
 
@@ -448,7 +449,7 @@ Flask 版:
 ```yaml
 spec_version: 1
 name: equivalence-flask
-days: 30
+days: <日数>
 learner:
   description: プログラミングをしたことがない人
   prior_code_lines_max: 0
@@ -461,18 +462,37 @@ budget:
   code_block_lines: 25
 stack_profile: flask
 app_repo: .
-material_dir: material/30days-curriculum
+material_dir: <material_dir>
 naming: day
 distribution:
   formats: [zip]
 qa:
-  gui_services: [Render]
-  real_root_files_manifest: material/_meta/scaffold-manifest.json
+  gui_services: <取り出した元のスクリプトの GUI サービスの語の一覧を写す>
+  real_root_files_manifest: <取り出した元の教材の目録の JSON の、<material_dir> からの相対パス>
 ```
 
-Next.js 版は、上の `name` を `equivalence-nextjs`、`stack_profile` を `nextjs` にし、`qa` を次にする。
+Next.js 版も、Flask 版と同じ全部のキーを書く。値は次のとおり。`material_dir` と `naming` は、書かないと既定（`naming` は `day`）で動くので、必ず取り出した元に合わせて書く。
 
 ```yaml
+spec_version: 1
+name: equivalence-nextjs
+days: <日数>
+learner:
+  description: プログラミングをしたことがない人
+  prior_code_lines_max: 0
+  os: [macos]
+budget:
+  minutes: 120
+  new_concepts: 3
+  files: 5
+  copy_lines: 200
+  code_block_lines: 25
+stack_profile: nextjs
+app_repo: .
+material_dir: <material_dir>
+naming: <day か chapter-id。取り出した元の章ファイルの名前に合わせる>
+distribution:
+  formats: [zip]
 qa:
   gui_services: <取り出した元のスクリプトの GUI サービスの語の一覧を写す>
   real_root_files: <取り出した元のスクリプトの、ルート直下の写経のファイルの定数を写す>
@@ -480,6 +500,9 @@ qa:
   required_mermaid_days: <取り出した元のスクリプトの REQUIRED_MERMAID_DAYS を写す>
   screenshot_exempt: <取り出した元の可視化の検査スクリプトの SCREENSHOT_EXEMPT の 4 項目を、ファイル名と理由のまま写す>
 ```
+
+`naming` が `chapter-id` の時は、`chapters` に章（`day` と `file`）の一覧も書く。`_cmd_check`（`educreator/cli.py` の 83〜93 行）が `chapters` から `checks.day_view` を作り、
+`chapters` にあるファイルが教材のフォルダに無ければ 2 で終わるため。
 
 `qa` の値の出どころ（どれも取り出した元のスクリプトの定数。stack profile の `educreator/profiles/flask.yaml`・`nextjs.yaml` には無いので、書かないと
 edu-creator の既定の空で打つことになり、違いが写しの誤りに見える）:
@@ -502,7 +525,7 @@ edu-creator の既定の空で打つことになり、違いが写しの誤り�
 元の側（`<取り出し先>` を作業フォルダにして、`python3`）。取り込み元の品質検査の実行スクリプトと同じ分け方にする。
 
 - ファイルごとの 7 本（`visualization`・`step-length`・`no-skip`・`tech-stack`・`code-completeness`・`tone`・`comprehension`）:
-  `material/30days-curriculum/` 直下の `day[0-9][0-9]_*.md` と `appendix_*.md` の 1 つずつに
+  `<material_dir>/` 直下の `day[0-9][0-9]_*.md` と `appendix_*.md` の 1 つずつに
   `python3 <取り出した元の検査スクリプト> <そのファイル>`
 - 残りの 15 本: `python3 <取り出した元の検査スクリプト> <教材のフォルダ>` を 1 回
 
@@ -526,7 +549,7 @@ uv run edu-creator check --spec <取り出し先>/course-spec.yaml <検査の ID
 ### 期待する出力と、比べ方
 
 edu-creator の出力は 1 行目が `OK  <ID>` か `FAIL <ID>`、最後の行が `1/1 件通過` か `0/1 件通過`、終了コードは 0 か 1
-（`educreator/cli.py` の 97〜104 行）。比べるのは次の 2 つ。
+（`educreator/cli.py` の 98〜105 行）。比べるのは次の 2 つ。
 
 1. 終了コードが 0 か 0 以外か（元は 1 以外の値で終わる事もあるので、値そのものは比べない）
 2. edu-creator の出力から 1 行目と最後の行を外した物が、元の側でまとめた出力と同じ
@@ -536,17 +559,28 @@ edu-creator の出力は 1 行目が `OK  <ID>` か `FAIL <ID>`、最後の行�
 
 違う行は種類を 1 つ付ける。`by-design`（取り込みの時に決めて変えた違い。根拠に `docs/checks.md` の行を書く）、
 `port-bug`（写しの誤り。edu-creator の写しだけを直し、試験を先に書いてから打ち直す）、
-`source-bug`（元のスクリプトの誤り。元は直さず理由を書く）。合格は 44 行すべてに種類が付き、`port-bug` が 0 行、
-`match` 以外の行は理由が空でない事。
+`source-bug`（元のスクリプトの誤り。元は直さず理由を書く）。`kind` の値は `match`・`by-design`・`source-bug`・`port-bug` の 4 つ。
 
-### 組み込みそのものの確かめ（手順 11 の終わり）
+台帳は、同値確認の実行ツール（元と edu-creator の両方で同じ検査を打って 1 行ずつ足す手元のツール。このリポジトリには入れない）が作る TSV ファイル 1 つ。
+列は左から `check_id`・`repo`・`src_rc`・`edu_rc`・`same_output`・`kind`・`reason`（タブ区切り、1 行目が見出し）。
+`src_rc` は元のスクリプトの終了コードで、元が無い行は `-`。`same_output` は `yes`／`no`。`kind` は、終了コードの 0／0 以外が同じで出力も同じ時だけ
+ツールが `match` と書き、それ以外は空で出るので、人が `by-design`・`source-bug`・`port-bug` のどれかに埋めて `reason` を書く。
+ツールは実行のたびに、台帳の全行を数えて最後に 1 行を出す。合格はその行がちょうど次の形になる事:
+
+```
+ROWS=44 EMPTY_KIND=0 PORT_BUG=0
+```
+
+`match` 以外の行は `reason` が空でない事も、台帳を見て確かめる。
+
+### 組み込みそのものの確かめ
 
 ```bash
 uv run pytest tests/educreator -q   # 終了コード 0
 bash scripts/ci.sh fast             # ruff の全ルール・format・mypy。終了コード 0
 ```
 
-手順 11 で先に書く試験（旧実装で落ちる事を確かめてから直す）:
+先に書いた試験（旧実装で落ちる事を確かめてから直した）:
 
 | 試験 | 確かめる事 |
 |---|---|
@@ -563,7 +597,7 @@ bash scripts/ci.sh fast             # ruff の全ルール・format・mypy。終
 | `test_skill_hooks.py`（新しいファイル `tests/educreator/test_skill_hooks.py`） | 関門の hook の判定の 1〜5 を 1 つずつ、hook をファイルとして子プロセスで打って確かめる。印が無い時に止まる物: `guarded_dir` の下の `.md` への `Write`、`python3 x.py <相対の教材のパス>`、`printf x>><相対の教材のパス>`、`cd <守るフォルダ>`、入力の `cwd` を守るフォルダの横にして `../<守るフォルダの名前>/day01_x.md` に書く `Bash`、`git checkout -- <教材のパス>`、`find <守るフォルダ> -delete`、`sort -o <教材のパス> <教材のパス>`、`sort --output=<教材のパス> x`、`uniq x <教材のパス>`、`cat <教材のパス> \| tee x`、閉じていない引用符の `Bash`。通る物: 単独の `cat <教材のパス>`、外のパスへの `Write`、印がある時の書き込み。`guarded_dir` を symlink の先で渡しても同じ判定。入力が壊れている・`cwd` が無い時は止まる。止める時の出力は `permissionDecision: deny` の JSON で終了コード 0。**壊れた時**: hook の `if __name__ == "__main__":` の所は `sys.exit(run_safely(main))` の 1 行にし、試験は `run_safely` に例外を出す関数を渡して、2 が返り標準エラーに理由がある事を見る（`main` の中のどこで例外が出ても同じ道を通る）。印の hook が `marker_dir` に印を作る。どれも skip しない（標準の部品だけで動くため） |
 | `test_wheel_*`（`tests/educreator/test_wheel.py`） | wheel に `educreator/agent-skill/material-writing/SKILL.md` がある |
 
-`claude -p` が `--plugin-dir` の skill と hook を実際に読み込む事は、試験の偽物では確かめられない。手順 11 で本物の `claude` を 1 回打ち、
+`claude -p` が `--plugin-dir` の skill と hook を実際に読み込む事は、試験の偽物では確かめられない。本物の `claude` を 1 回打ち、
 `edu-creator:material-writing` を読む前の書き込みが止まり、読んだ後に通る事を見る（この文書を書いた時点では打っていない）。
 plugin の形（manifest は省略できる、`--plugin-dir` では名前がフォルダ名になる、skill は `<plugin>:<skill>` で呼ぶ）は
 Claude Code の公式文書（https://code.claude.com/docs/en/plugins-reference と https://code.claude.com/docs/en/skills 、2026-11-13 に読んだ）と、

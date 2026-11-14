@@ -3,6 +3,7 @@
 ほかの教材づくりの場（Flask 版と Next.js 版の 2 つの教材リポジトリ。`docs/checks.md` と同じ呼び方）で育った書き方の決まりを、
 edu-creator 3.0（`educreator/`）が Step を書く実行に渡す仕組みの設計。この文書は、skill と hook を Step を書く命令（`edu-creator write`）へ組み込む変更を書く。
 skill を読む処理は `educreator/skill.py`、skill の本文と hook は `educreator/agent-skill/`、試験は `tests/educreator/` にある。
+この文書は作ってある物の記録で、まだ作っていない物は 2 の「まだ作っていない（後で作る）」だけ（それ以外は、書いた時点で入っている）。
 行番号を書いた箇所は、この設計を入れたコミットの時点のファイルの行（関数の名前も併記する）。
 
 何を移すかの決定は、決定表（385 行。列は `repo`・`path`・`blob_sha`・`verdict`・`reason`・`scan`）で行った。
@@ -44,6 +45,8 @@ hook のファイル名だけ下線でつなぐのは、試験から `import` �
 ### 行ごとの置き場と、消す物・一般化する物
 
 元の欄は、取り込み元の文書の種類（skill／hook／プロンプト）と、決定表の行番号だけを書く。元のファイルのパスは書かない。
+元の文は、持ち主の手元にある 2 つの取り込み元の教材リポジトリの写し（公開していない）から取った。この文書では 6 の `<取り込み元の clone>` と同じ呼び方をする。
+`educreator/agent-skill/` に移した物は一般化した後の結果なので、使う時にも直す時にも取り込みをやり直す必要は無い。
 消す物は種類だけを書く（消す文字そのものはこの文書にも写さない）。
 
 | 行 | 元 | 置き場 | 消す物・一般化する物 |
@@ -119,16 +122,16 @@ skill は Step を書く実行（`educreator/write.py`）にだけ渡す。`chec
 
 ### 共通
 
-- `educreator/runtime/base.py` の `AgentRequest` に 2 つの欄を足す。
+- `educreator/runtime/base.py` の `AgentRequest` に 2 つの欄を足した。
   - `skills: tuple[str, ...] = ()` … 渡す skill の名前（`educreator/agent-skill/` の下のフォルダ名）。並びは course-spec に書いた順
   - `guarded_dir: Path | None = None` … hook が守る教材のフォルダ
-- `educreator/write.py` の `request_for` に引数を 2 つ足す: `request_for(task, tree, profile, block_lines, max_files, skills=(), course_facts="")`。
+- `educreator/write.py` の `request_for` に引数を 2 つ足した: `request_for(task, tree, profile, block_lines, max_files, skills=(), course_facts="")`。
   - `skills=skills`・`guarded_dir=task.material.parent` を `AgentRequest` に入れる。`skills` が空でなければ `allowed_tools` に `"Skill"` を足す
   - `course_facts` は `PROMPT` の `{context}` の次の行に入れる（下の 4。依頼文に入るので録画の鍵にも入る）
   - `educreator/cli.py` の `_cmd_write`（108〜165 行）が `write` の段で、`load_spec` で読んだ spec から `skills=tuple(spec.skills)` と
     `course_facts=skill.course_facts(spec) if spec.skills else ""`（153 行）を作って `request_for` に渡す。
     `skills` が空の教材では `course_facts` も空で、依頼文は skill を入れる前と同じになる（録画の鍵が変わらない）。`request_for` はほかに `tests/educreator/e2e_task.py` も呼ぶ
-- 新しいモジュール `educreator/skill.py` を足す。中身は次のとおり（版の確かめの `claude_version` は下の Claude の節）。
+- 新しいモジュール `educreator/skill.py` を足した。中身は次のとおり（版の確かめの `claude_version` は下の Claude の節）。
   - `SKILL_DIR = Path(__file__).parent / "agent-skill"`
   - `available_skills() -> list[str]` … `SKILL_DIR` の下で `SKILL.md` を持つフォルダの名前を並べて返す
   - `SOURCE_GLOBS = ("SKILL.md", "reference/*.md", "hook/*.py")` … skill 1 つのフォルダの中で、数える・写すファイルの全部。これ以外（`__pycache__/`・`*.pyc`・`.DS_Store` など）は無い物として扱う
@@ -183,7 +186,7 @@ Claude Code の plugin として、その実行の間だけ読み込ませる。
 `ClaudeCodeRuntime` で、`run()` が起動するのと同じ `self.executable`（`educreator/runtime/claude_code.py` の 26 行）を見る。手元の PATH に版の違う `claude` が
 複数あっても、確かめる物と動かす物がずれない。
 
-- `ClaudeCodeRuntime.__init__(self, executable="claude", version_probe=None)` に引数を 1 つ足す。`version_probe` は「版の文字列を返す関数」で、
+- `ClaudeCodeRuntime.__init__(self, executable="claude", version_probe=None)` に引数を 1 つ足した。`version_probe` は「版の文字列を返す関数」で、
   `None` なら `skill.claude_version(self.executable)` を使う
 - `skill.claude_version(executable) -> str` は `[executable, "--version"]` を `subprocess.run`（`check=False`・`timeout=30`）で打ち、標準出力の最初の
   `数字.数字.数字` を返す（今の出力は `2.1.322 (Claude Code)`）。起動できない・0 以外で終わる・その形が無い時は `RuntimeError` を出す
@@ -237,6 +240,17 @@ hook が見るのはファイルのパスの形だけで、文の意味は判定
 
 印の hook（`material_writing_marker.py`）は、`tool_input.skill`（無ければ `tool_input.command`）に `material-writing` を含み、`session_id` があれば
 `marker_dir/<session_id>` を作る。作れなければ標準エラーに理由を書いて 0 で終わる（関門が `deny` で止め、理由が見える）。
+出力の決まり（`material_writing_marker.py` を読んで確かめた）: 標準出力には何も書かない。終了コードは、入力が読めない・skill が対象でない・
+`session_id` が使えない形（`[A-Za-z0-9_.-]+` に合わない）・印を作れない、のどれでも 0（標準エラーに理由は書くが止めない）。印を置いた時も 0 で、2 は返さない。
+
+#### 案内の hook の出力（`material_writing_reminder.py`）
+
+止める hook ではなく、`material_writing_reminder.py` を読んで確かめた出力は次の 1 通りだけ。
+
+- 出す条件: 入力が読め、`tool_input.file_path` の末尾が `.md` で、`os.path.realpath` を通したパスが `target.json` の `guarded_dir` そのものかその下にある時
+- 出す物: 標準出力に `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": "<6 つの手順の案内文>"}}` を 1 つ（`ensure_ascii=False`）。終了コードは 0
+- 出さない物: 上の条件に当たらない時と、入力・`target.json` が読めない時（`KeyError`・`ValueError`・`OSError` など）は、何も出さず終了コード 0。止める（2・`permissionDecision`）事は一切しない
+- 案内の文は書き込みの後にツールの結果の隣へ届くので、書く前に効かせるのは関門の hook の役目（案内の文の末尾にもそう書いてある）
 
 作業フォルダの `.claude/skills/` に写す形を取らなかった理由: 作業フォルダは学習者の手元と同じツリーで、
 `educreator/cassette.py` の `snapshot`・`changes` が録画の差分として拾ってしまう。対象のリポジトリにある `.claude/` も上書きしうる。
@@ -328,8 +342,8 @@ Codex の方は、ログインが切れていて今は打てない（`educreator
 `context` は使わない。`context` は「前の Day までに説明した用語」の行として描かれ（`educreator/write.py` の 91 行）、
 `PROMPT` は新しい Step を末尾に足させる（同 38 行と 44 行）ので、そこに入れると検査の結果が用語として届き、直さずに Step を増やしてしまう。
 
-- `StepTask` に欄 `fix: str = ""`（落ちた検査の ID と出力）を足す
-- `request_for` は、`task.fix` が空でなければ `PROMPT` の代わりに新しい定数 `FIX_PROMPT` を使う。中身は次の形で、
+- `StepTask` に欄 `fix: str = ""`（落ちた検査の ID と出力）を足した
+- `request_for` は、`task.fix` が空でなければ `PROMPT` の代わりに新しい定数 `FIX_PROMPT` を使うようにした。中身は次の形で、
   `{material}`・`{day}`・`{verify}`・`{marker}`・`{block_lines}`・`{max_files}`・`{course_facts}` は `PROMPT` と同じ値を入れる
 
 ```
@@ -404,7 +418,7 @@ skills:
 | 内容 | 出どころ | エージェントへの届き方 |
 |---|---|---|
 | 教材の名前・学習者像・日数・配布の形・stack profile | `course-spec.yaml` の `name`・`learner.description`・`days`・`distribution.formats`・`stack_profile` | `_cmd_write` が、`spec.skills` がある時だけ `skill.course_facts(spec)` で次の形の行にし、`request_for` の `course_facts` で依頼文に入れる（`skills` が無い教材では入れない）: `- 教材: <name>（全 <days> 日。配布: <formats>。技術: <stack_profile>）` と `- 学習者: <learner.description>` |
-| 1 つのコードブロックの行数・1 回に変えるファイルの数 | `budget.code_block_lines`・`budget.files` | 今の `request_for` の `block_lines`・`max_files`（`PROMPT` の 42 行と 49 行） |
+| 1 つのコードブロックの行数・1 回に変えるファイルの数 | `budget.code_block_lines`・`budget.files` | 今の `request_for` の `max_files`（`PROMPT` の 42 行。`budget.files`）と `block_lines`（同 49 行。`budget.code_block_lines`） |
 | 今回書く Day・書き先・やること・確かめ方・前の Day までの用語 | `StepTask` | 今の `PROMPT`（`educreator/write.py` の 35〜51 行の `PROMPT`） |
 | 画面・ルート・実際のコード | 作業フォルダ（前の Step までの学習者のツリー） | エージェントが自分で読む |
 | 守る教材のフォルダ | `StepTask.material` の親 | `AgentRequest.guarded_dir`。Claude の hook は `target.json` |
@@ -415,6 +429,12 @@ skill の文がエージェントに打たせる命令は無い（検査は上�
 `course-mission` の型の各見出しには、上の表のどの行から値を読むかだけを書く。
 目的は依頼文の「教材」と「学習者」の行、完了の定義は「教材」の行の日数と配布の形、制約は依頼文のコードブロックの行数とファイルの数。
 持ち主の決定・次の一手の選び方・止まって聞くときは、教材に依らない決まりだけを書く。
+実際の文は `educreator/agent-skill/course-mission/SKILL.md` にあり、6 つの見出しの決まりは次のとおり（そのファイルを読んで写した）。
+
+- 1 目的・2 完了の定義・4 制約: 値は依頼文のどの行から読むかだけ。依頼文に無い値を想像で補わない
+- 3 持ち主の決定: 依頼文と作業フォルダの文書に書かれた決定だけを知る物とし、蒸し返さず、決定に無い機能や方針を足さない。決めるべき事が見つかったら自分で決めず、最後の返答に事実と選択肢を書く
+- 5 次の一手の選び方: 依頼文の Step を 1 つだけ進める。順は、作業ツリーを読む、実コードを 1 か所変える、動かして確かめる、Step を書く。別の作業が見つかっても今回に要る物だけ直し、残りは最後の返答に 1 行で書く
+- 6 止まって聞くとき: 依頼文と学習者像の食い違い、日数・配布の形・前提の変更が要る時、自分が変えていない変更を消さないと進めない時、本番・秘密の値・外部への書き込みが要る時は、書かずに最後の返答に理由を書いて終わる
 
 固有の物が入っていない事は、次の 2 つで確かめる。
 
@@ -587,6 +607,14 @@ edu-creator の出力は 1 行目が `OK  <ID>` か `FAIL <ID>`、最後の行�
 ```
 ROWS=44 EMPTY_KIND=0 PORT_BUG=0
 ```
+
+補助のツールが無くても、手で書いた台帳は、このリポジトリで次の 1 行で数えられる（`<台帳の TSV>` は台帳のパス。1 行目の見出しは数えない）。
+
+```bash
+python3 -c 'import csv,sys; r=list(csv.DictReader(open(sys.argv[1],encoding="utf-8"),delimiter="\t",quoting=csv.QUOTE_NONE)); print("ROWS=%d EMPTY_KIND=%d PORT_BUG=%d"%(len(r),sum(1 for x in r if not (x["kind"] or "").strip()),sum(1 for x in r if x["kind"]=="port-bug")))' <台帳の TSV>
+```
+
+合格は `ROWS` が（検査の数 × 2）に等しく（22 本なら 44）、`EMPTY_KIND=0`、`PORT_BUG=0`。
 
 `match` 以外の行は `reason` が空でない事も、台帳を見て確かめる。
 

@@ -143,3 +143,20 @@ def test_cli_auth_status_missing_config_exits_2(tmp_path, capsys):
 
     assert main(["auth", "status", "--config", str(tmp_path / "nonexistent.toml")]) == 2
     assert "nonexistent.toml" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("provider", ["claude", "chatgpt"])
+def test_env_drops_api_keys_for_every_provider(tmp_path, monkeypatch, provider):
+    """API キーの環境変数が親にあっても、どのアカウントの子プロセスにも渡さない（サブスクでなくキーで課金されるのを防ぐ）。"""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "dummy-a")
+    monkeypatch.setenv("OPENAI_API_KEY", "dummy-o")
+    empty = tmp_path / "edu-creator.toml"
+    empty.write_text("", encoding="utf-8")
+    cfg = load_accounts(empty, home=tmp_path)
+    account = next(a for a in cfg.accounts if a.provider == provider)
+    for env in (
+        account.env(),
+        account.env({"ANTHROPIC_API_KEY": "k", "OPENAI_API_KEY": "k", "PATH": "/bin"}),
+    ):
+        assert "ANTHROPIC_API_KEY" not in env
+        assert "OPENAI_API_KEY" not in env

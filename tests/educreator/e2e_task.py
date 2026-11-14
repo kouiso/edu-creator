@@ -11,12 +11,15 @@ CASSETTE = Path(__file__).parent / "fixtures" / "cassettes" / "sample-day01-step
 VERIFY = "python3 -c \"from app.todo import add, list_items; add('買い物'); add('洗濯'); print(list_items())\""
 
 
-def make_request(tree: Path) -> AgentRequest:
-    task = StepTask(
+def make_task(tree: Path) -> StepTask:
+    return StepTask(
         day=1,
         goal="足したやることを、番号付きの1行ずつの文字列で返す関数 list_items を app/todo.py に足す",
         verify=VERIFY,
         material=tree / "material" / "day01_todo.md",
         context="関数・リスト・f 文字列・for（Day01 の Step 1 まで）",
     )
-    return request_for(task, tree, load_profile("flask"), block_lines=25, max_files=1)
+
+
+def make_request(tree: Path) -> AgentRequest:
+    return request_for(make_task(tree), tree, load_profile("flask"), block_lines=25, max_files=1)

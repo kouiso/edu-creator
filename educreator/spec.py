@@ -14,6 +14,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from educreator.profiles import QaConfig, available_profiles
+from educreator.skill import available_skills
 
 
 class Strict(BaseModel):
@@ -127,6 +128,21 @@ class CourseSpec(Strict):
     design: DesignSpec = Field(default_factory=DesignSpec)
     # 検査に渡す値の、教材ごとの上書き（stack profile の qa を上書きする。公開先のサービス名など教材で決まるもの）
     qa: dict[str, Any] = Field(default_factory=dict)
+    # Step を書く実行に渡す skill の名前（educreator/agent-skill/ の下のフォルダ名）。無ければ skill を渡さない
+    skills: list[str] = Field(default_factory=list)
+
+    @field_validator("skills")
+    @classmethod
+    def _known_skills(cls, v: list[str]) -> list[str]:
+        for name in v:
+            if name not in available_skills():
+                raise ValueError(
+                    f"skill '{name}' は無い。使えるもの: {', '.join(available_skills())}"
+                )
+        dups = sorted({n for n in v if v.count(n) > 1})
+        if dups:
+            raise ValueError(f"skills に同じ名前が 2 回ある: {dups}")
+        return v
 
     @field_validator("qa")
     @classmethod

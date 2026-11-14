@@ -151,7 +151,7 @@ Claude Code の plugin として、その実行の間だけ読み込ませる。
    `skill.stage_plugin(req.skills, req.guarded_dir or req.cwd)` を呼ぶ。作る物は `private_dir()/plugin-<16 桁>/edu-creator/` の下に次の 4 つ。
    - `.claude-plugin/plugin.json` … `{"name": "edu-creator"}`
    - `skills/<名前>/` … `educreator/agent-skill/<名前>/` の `SKILL.md` と `reference/*.md` だけを写す（`SOURCE_GLOBS` のうち `hook/` 以外）
-   - `hooks/` … 選んだ skill の `hook/*.py` だけを写す。`hooks/hooks.json` は `educreator/skill.py` の定数 `HOOKS`（下の表）から作る
+   - `hooks/` … 選んだ skill の `hook/*.py` だけを写す。`hooks/hooks.json` は `educreator/skill.py` の定数 `HOOKS`（下の表）から作るが、写した hook ファイルに当たる項目だけを残す（`_hooks_json`）。hook を持たない skill だけを選ぶと `hooks.json` の `hooks` は空（`{}`）になる（試験: `test_claude_command_without_hook_skills_writes_no_hook_entries`）
    - `hooks/target.json` … `{"guarded_dir": "<守るフォルダ>", "marker_dir": "<private_dir()/marker>"}`。どちらも `os.path.realpath` を通した絶対パス
      （macOS の `/var` と `/private/var` のように、同じ所が 2 つの名前で見えるのをそろえるため）
 2. 名前の 16 桁と `digest.txt` は、作る時も使い回す時も同じ 1 つの値 `H = tree_hash(<plugin の edu-creator/ のフォルダ>, PLUGIN_GLOBS)` で決める
@@ -231,7 +231,7 @@ hook が見るのはファイルのパスの形だけで、文の意味は判定
        `find`（`-delete`・`-exec`）、`awk`（中で書き込める）、`sort`（`-o`・`--output` で書く）、`uniq`（2 つ目の引数が書き先）、
        `rg`（`--pre` でほかの命令を動かす）、`less`・`more`（`LESSOPEN` などでほかの命令を動かしうる）、`file`（`-C` で引数の隣に `.mgc` を書く）、`egrep`・`fgrep`・`column`（使い道が無いので減らす））
    - それ以外の道具 → 対象にしない
-3. 対象で、`session_id` が無い → 止める
+3. 対象で、`session_id` が無い、または `[A-Za-z0-9_.-]+` に全体が合わない（`material_writing_gate.py` の `SAFE_SESSION`）→ 止める。`marker_dir/<session_id>` をそのままパスに使うので、`/` や `..` を含む値で `marker_dir` の外を見に行かせないため
 4. 対象で、`marker_dir/<session_id>` が無い → 止める。理由の文は「Skill ツールで `edu-creator:material-writing` を読んでから、同じ操作をやり直す」
 5. ほかは何も出さずに終わる（終了コード 0。通す）
 
@@ -274,6 +274,9 @@ edu-creator は Codex の skill の置き場は使わず、skill の本文をプ
 <そのファイルの本文。reference/ の下を名前順に全部>
 ===== ここまで =====
 ```
+
+skill が N 個ある時は、`===== skill: <名前> =====` から reference の終わりまでを `req.skills` の順に N 回並べる（見出しは skill ごとに 1 つ）。
+終わりの `===== ここまで =====` は全部の後に 1 回だけ付く（skill ごとには付かない）。
 
 - `hook/` は埋め込まない。Codex の側では hook が動かないが、決まりの本文が最初の道具の呼び出しより前に必ずモデルに届くので、
   関門の hook が守っていた「読まずに書く」は起きない。
@@ -418,7 +421,7 @@ skills:
 | 内容 | 出どころ | エージェントへの届き方 |
 |---|---|---|
 | 教材の名前・学習者像・日数・配布の形・stack profile | `course-spec.yaml` の `name`・`learner.description`・`days`・`distribution.formats`・`stack_profile` | `_cmd_write` が、`spec.skills` がある時だけ `skill.course_facts(spec)` で次の形の行にし、`request_for` の `course_facts` で依頼文に入れる（`skills` が無い教材では入れない）: `- 教材: <name>（全 <days> 日。配布: <formats>。技術: <stack_profile>）` と `- 学習者: <learner.description>` |
-| 1 つのコードブロックの行数・1 回に変えるファイルの数 | `budget.code_block_lines`・`budget.files` | 今の `request_for` の `max_files`（`PROMPT` の 42 行。`budget.files`）と `block_lines`（同 49 行。`budget.code_block_lines`） |
+| 1 つのコードブロックの行数・1 回に変えるファイルの数 | `budget.code_block_lines`・`--max-files`（`write` の引数。既定 1。`budget.files` ではない） | 今の `request_for` の `max_files`（`PROMPT` の 42 行。`educreator/cli.py` の 151 行で `args.max_files` を渡し、344 行で `--max-files` を定義）と `block_lines`（同 49 行。`budget.code_block_lines`） |
 | 今回書く Day・書き先・やること・確かめ方・前の Day までの用語 | `StepTask` | 今の `PROMPT`（`educreator/write.py` の 35〜51 行の `PROMPT`） |
 | 画面・ルート・実際のコード | 作業フォルダ（前の Step までの学習者のツリー） | エージェントが自分で読む |
 | 守る教材のフォルダ | `StepTask.material` の親 | `AgentRequest.guarded_dir`。Claude の hook は `target.json` |
@@ -630,6 +633,7 @@ bash scripts/ci.sh fast             # ruff の全ルール・format・mypy。終
 | 試験 | 確かめる事 |
 |---|---|
 | `test_spec_skills_*`（`tests/educreator/test_spec_lessons.py`） | `skills` が無い時は `[]`。知らない名前と重複は上の文で落ちる。`edu-creator spec check` が 1、`edu-creator check` が 2 |
+| `test_claude_command_without_hook_skills_writes_no_hook_entries`（同） | hook を持たない skill（`course-mission`）だけで作ると、`skills/course-mission/SKILL.md` があり、`hooks/hooks.json` の `hooks` が `{}` |
 | `test_claude_command_with_skills`（`tests/educreator/test_runtime.py`） | `ClaudeCodeRuntime(version_probe=lambda: "2.1.323")` で作る（本物の `claude` を起動しない）。`--plugin-dir` と `--append-system-prompt` が付き、`--allowedTools` に `Skill` が入る。plugin のフォルダに `skills/<名前>/SKILL.md`・`hooks/hooks.json`・`hooks/target.json`・`digest.txt` がある。`hooks.json` の関門だけに `"onFailure": "block"` があり、3 つとも `command` と `args` の形。`--setting-sources project,local` は `skills` の有無に依らず付く。`skills` が空なら、そのほかは今と同じ |
 | `test_stage_plugin_reuse`（同） | 同じ中身なら作り直さず同じフォルダを返す。`digest.txt` の中身は、その `edu-creator/` に `tree_hash(…, PLUGIN_GLOBS)` を当てた値と同じ。`hooks/__pycache__/x.pyc` を足しても使い回される。`digest.txt` が無い・中身が合わないフォルダは、消さず名前も変えずに残り、別の名前のフォルダが返る |
 | `test_claude_version_gate`（同） | `version_probe` が `"2.1.284"` を返すと `build_command` が `RuntimeError`（文に版と `executable` がある）、`"2.1.295"` なら通る。`version_probe` が `RuntimeError` を出すとそのまま上へ出る。`skills` が空なら `version_probe` は呼ばれない。`claude_version` は、偽の実行ファイル（`2.1.322 (Claude Code)` を出す小さなスクリプト、何も出さないスクリプト、無いパス）で、版・`RuntimeError`・`RuntimeError` を返す |
@@ -648,6 +652,8 @@ bash scripts/ci.sh fast             # ruff の全ルール・format・mypy。終
 ```bash
 uv run edu-creator write --spec <course-spec.yaml> --day <Day の番号> --goal "<この Step でやること>" --verify "<動かして確かめる命令>" --config <edu-creator.toml のパス> --cassette <録画の JSON> --record
 ```
+
+前提: `--spec` の course-spec の `chapters` に、`--day` で渡す Day が書いてあること。無いと `write` は何も実行せず、標準エラーに `エラー: <spec のパス> の chapters に Day <番号> が無い` を出して終了コード 2 で終わる（`educreator/cli.py` の 125〜127 行）。上の命令の例の `<Day の番号>` は、この `chapters` に書いた `day` の 1 つにする。
 
 成功の見分け方: 終了コードが 0、`--cassette` の録画の JSON が書かれる、続けて `uv run edu-creator check --spec <course-spec.yaml> step-length code-completeness anchor setext-heading forward-refs` の 5 本が全部 `OK` で `5/5 件通過`。
 これは取り込みの途中で、実際のサブスクのログインを使って 1 回打ち、5/5 通った。録画の JSON と作業フォルダはこのリポジトリに入れていないので、この文書だけでは同じ出力を再現できない（上の形で打ち直せば確かめられる）。

@@ -25,4 +25,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PYTHONPATH: scripts
-        run: python3 -m repobot heading
+        # repobot はこのワークフローと同時期に入る。既定ブランチに無い間は何もせず終わる。
+        run: |
+          if [ ! -f scripts/repobot/__main__.py ]; then
+            echo "::notice::repobot is not on the default branch yet; skipping heading fix"
+            exit 0
+          fi
+          python3 -m repobot heading

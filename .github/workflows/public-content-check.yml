@@ -42,4 +42,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PYTHONPATH: scripts
-        run: python3 -m repobot content
+        # repobot はこのワークフローと同時期に入る。既定ブランチに無い間は
+        # 権限持ちのコンテキストで PR 側のコードを取り出せないので、検査自体を置けない。
+        run: |
+          if [ ! -f scripts/repobot/__main__.py ]; then
+            echo "::notice::repobot is not on the default branch yet; skipping content scan"
+            exit 0
+          fi
+          python3 -m repobot content

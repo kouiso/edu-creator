@@ -490,7 +490,11 @@ def test_repobot_workflows_run_only_default_branch_code(name, command):
         assert checkout[0]["with"]["ref"] == "${{ github.event.repository.default_branch }}"
         assert checkout[0]["with"]["persist-credentials"] is False
         runs = [s["run"] for s in steps if "run" in s]
-        assert runs == [f"python3 -m repobot {command}"]
+        assert len(runs) == 1
+        # repobot はこのワークフローと同時期に入るため、既定ブランチに無い間は
+        # 実行自体をスキップする。ガードの最後は必ず本体呼び出しで閉じる。
+        assert runs[0].rstrip().endswith(f"python3 -m repobot {command}")
+        assert "scripts/repobot/__main__.py" in runs[0]
         # 書いた人の文字列を run に埋め込まない（式展開による命令の差し込みを防ぐ）
         assert all("${{" not in r for r in runs)
 

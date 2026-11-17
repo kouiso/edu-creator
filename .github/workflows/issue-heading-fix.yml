@@ -1,0 +1,34 @@
+name: Issue heading fix
+
+# issue フォームで作ると見出しが1段深くなる（### / ####）ので、作られた直後に ## / ### へ戻す。
+# 変わらない時は何もしない。
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Fix headings
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PYTHONPATH: scripts
+        # repobot はこのワークフローと同時期に入る。既定ブランチに無い間は何もせず終わる。
+        run: |
+          if [ ! -f scripts/repobot/__main__.py ]; then
+            echo "::notice::repobot is not on the default branch yet; skipping heading fix"
+            exit 0
+          fi
+          python3 -m repobot heading

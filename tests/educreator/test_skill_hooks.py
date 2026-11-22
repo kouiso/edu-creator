@@ -146,6 +146,51 @@ def test_gate_denies_cd_into_guarded_and_find_delete(world):
     _is_deny(_fire(GATE, world["target"], _bash(world, f"find {guarded} -delete")))
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        # インタプリタの -c / -e の文字列の中にパスを書く抜け道
+        "python3 -c \"open('material/day01_todo.md','w').write('x')\"",
+        'python3 -c \'open("material/day01_todo.md","w")\'',
+        "sed -e 's/x/y/' -i material/day01_todo.md",
+        # $PWD や変数の展開で守るフォルダのパスを作る抜け道
+        'echo x > "$PWD/material/day01_x.md"',
+        'cd "$PWD/material"',
+        'P=material; echo x > "$P/day01_x.md"',
+        'echo x > "$P/day01_x.md"',
+        "python3 -c \"open('$P/x.md','w')\"",
+        # ワイルドカードに絡む .. は展開の結果が定まらない
+        'cp "$SRC/../material/day01_todo.md" /tmp/',
+        # 展開できない変数だけのパス位置は、外と言い切れない
+        'rm -rf "$OUT_DIR"',
+    ],
+)
+def test_gate_denies_bash_reaching_guarded_via_expansion_or_code(world, command):
+    _is_deny(_fire(GATE, world["target"], _bash(world, command)))
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # 教材のフォルダに関係ない python -c は止めない（誤検知を出さない）
+        "python3 -c \"print('ok')\"",
+        "python3 -c 'import sys; print(sys.version)'",
+        "python3 -c \"open('/tmp/x.md','w').write('x')\"",
+        # 分かる変数は展開してから見る（$HOME・~ は守るフォルダの外）
+        "echo $HOME",
+        'echo x > "$HOME/notes.md"',
+        "cat ~/notes.md",
+        # 展開しても守るフォルダの外
+        'echo x > "$PWD/app/notes.md"',
+        # 読むだけの命令は、パスが見えても従来どおり通す
+        'cat "$PWD/material/day01_todo.md"',
+        "grep Day material/day01_todo.md",
+    ],
+)
+def test_gate_passes_bash_provably_outside_guarded(world, command):
+    _is_pass(_fire(GATE, world["target"], _bash(world, command)))
+
+
 def test_gate_resolves_relative_paths_from_input_cwd(world):
     side = world["tree"] / "other"
     side.mkdir()
@@ -278,9 +323,25 @@ def test_marker_hook_falls_back_to_command_and_ignores_other_skills(world):
     }
     assert _fire(MARKER, world["target"], other)[0] == 0
     assert not (world["marker_dir"] / "s8").exists()
-    via_command = {**other, "tool_input": {"command": "material-writing"}}
+    via_command = {**other, "tool_input": {"command": "edu-creator:material-writing"}}
     assert _fire(MARKER, world["target"], via_command)[0] == 0
     assert (world["marker_dir"] / "s8").is_file()
+
+
+def test_marker_hook_needs_the_namespaced_name_exactly(world):
+    # 取り込み元の教材には同名の skill がありうる。部分一致だと edu-creator の skill を
+    # 読まなくても印が付くので、名前空間つきの完全一致だけを印にする
+    for tool_input in ({"skill": "material-writing"}, {"command": "material-writing"}):
+        world["marker_dir"].mkdir(parents=True, exist_ok=True)
+        (world["marker_dir"] / "s8").unlink(missing_ok=True)
+        payload = {
+            "session_id": "s8",
+            "cwd": str(world["tree"]),
+            "tool_name": "Skill",
+            "tool_input": tool_input,
+        }
+        assert _fire(MARKER, world["target"], payload)[0] == 0
+        assert not (world["marker_dir"] / "s8").exists()
 
 
 def test_marker_hook_reports_when_it_cannot_write(world, tmp_path):

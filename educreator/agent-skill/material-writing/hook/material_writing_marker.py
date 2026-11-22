@@ -28,7 +28,9 @@ def main() -> int:
     except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError) as e:
         sys.stderr.write(f"edu-creator の印の hook が入力を読めなかった: {type(e).__name__}: {e}\n")
         return 0
-    if not isinstance(skill, str) or "material-writing" not in skill:
+    # 名前空間つきの名前との完全一致。取り込み元の教材には edu-creator と別の置き場に同名の skill が
+    # ありうるので、部分一致だと edu-creator の skill を読まなくても印が付いてしまう
+    if skill != "edu-creator:material-writing":
         return 0
     if not isinstance(session, str) or not SAFE_SESSION.fullmatch(session):
         sys.stderr.write(

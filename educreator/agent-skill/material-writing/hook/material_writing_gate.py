@@ -19,6 +19,7 @@ import re
 import shlex
 import sys
 from collections.abc import Callable
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +46,10 @@ READ_ONLY_COMMANDS = frozenset(
 # 1 つでも含めば、単純な 1 つの命令ではない
 COMPOUND_MARKS = (";", "&", "|", "`", "$(", "\n", ">", "<")
 SAFE_SESSION = re.compile(r"[A-Za-z0-9_.-]+")
+# シェルが展開する変数・命令の置換。展開前の文字列は守るフォルダを指さないので、展開してから見る
+_VAR_REF = re.compile(r"\$(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*|\([^()]*\))|`[^`]*`")
+# 語の中のパスの形をした断片（python -c 'open("material/x.md")' のような、文字列の中も拾う）
+_TOKEN = re.compile(r"[A-Za-z0-9_.~${}/-]+")
 
 REASON_UNREAD_INPUT = (
     "教材のフォルダへの書き込みを止めました。edu-creator の hook が入力を読めなかったため、"
@@ -80,19 +85,84 @@ def points_at(path_text: str, cwd: str, guarded: Path) -> bool:
     return real == guarded or guarded in real.parents
 
 
+def _expand_known(text: str, cwd: str) -> str:
+    """分かる置換（$PWD・$HOME・~・$(pwd)）だけ先に展開する。分からない変数は残す。"""
+    home = str(Path.home())
+    out = text.replace("$(pwd)", cwd).replace("`pwd`", cwd)
+    out = out.replace("${PWD}", cwd).replace("$PWD", cwd)
+    out = out.replace("${HOME}", home).replace("$HOME", home)
+    if out.startswith("~/") or out == "~":
+        out = home + out[1:]
+    out = out.replace("=~/", f"={home}/").replace(":~/", f":{home}/")
+    return out
+
+
+@cache
+def _glob_prefix(pat: str, s: str, i: int = 0, j: int = 0) -> bool:
+    """glob の pat（* のみのワイルドカード）が、s そのものか s を頭に持つ文字列に合いうるか。
+    * は / を含む任意の並びに合う（シェルの変数展開が作るパスは深さが決まらないため）。"""
+    if j == len(s):
+        # s を使い切った。pat の残りは後ろに足すだけで必ず合う物が作れる
+        return True
+    if i == len(pat):
+        # pat が尽きたのに s が残る。s の方が長いので pat の合う物は s の頭になれない
+        return False
+    if pat[i] == "*":
+        return _glob_prefix(pat, s, i + 1, j) or _glob_prefix(pat, s, i, j + 1)
+    if pat[i] != s[j]:
+        return False
+    return _glob_prefix(pat, s, i + 1, j + 1)
+
+
+def _may_point(text: str, cwd: str, guarded: Path) -> bool:
+    """1つの断片が守るフォルダを指しうるか。展開できない変数が残る時は、届きうる形なら対象にする。"""
+    if not text:
+        return False
+    if _VAR_REF.search(text):
+        pat = _VAR_REF.sub("*", text)
+        p = Path(pat)
+        if not p.is_absolute():
+            p = Path(cwd) / p
+        parts = str(p).split("/")
+        if ".." in parts:
+            # ワイルドカードに絡む .. は展開の結果が定まらない（*/../x は * 次第でどこへでも行く）
+            return True
+        return _glob_prefix(str(p), str(guarded))
+    return points_at(text, cwd, guarded)
+
+
+def _path_tokens(text: str) -> list[str]:
+    """断片の中のパスの形をした連なり（/ か .md か $ か ~ を含む物だけ）。"""
+    return [
+        m.group(0)
+        for m in _TOKEN.finditer(text)
+        if "/" in m.group(0)
+        or m.group(0).endswith(".md")
+        or "$" in m.group(0)
+        or m.group(0).startswith("~")
+    ]
+
+
+def _word_touched(word: str, cwd: str, guarded: Path) -> bool:
+    expanded = _expand_known(word, cwd)
+    # つながって書かれた書き込み先（x>>path・--out=path）も拾うため、> < = で切る。cd・pushd の次の語も 1 つの語として同じに見る
+    pieces = [expanded, *re.split(r"[><=]", expanded)]
+    if any(_may_point(piece, cwd, guarded) for piece in pieces):
+        return True
+    # インタプリタの -c / -e の文字列や引用符の中のパスの形も拾う（open("material/x.md") など）
+    for piece in pieces:
+        if any(_may_point(token, cwd, guarded) for token in _path_tokens(piece)):
+            return True
+    return False
+
+
 def _bash_targets_guarded(command: str, cwd: str, guarded: Path) -> bool:
     try:
         words = shlex.split(command, posix=True)
     except ValueError:
         # 分けられない（閉じていない引用符など）なら、読むだけと言い切れないので対象にする
         return True
-    touched = False
-    for word in words:
-        # つながって書かれた書き込み先（x>>path・--out=path）も拾うため、> < = で切る。cd・pushd の次の語も 1 つの語として同じに見る
-        pieces = [word, *re.split(r"[><=]", word)]
-        if any(points_at(piece, cwd, guarded) for piece in pieces):
-            touched = True
-            break
+    touched = any(_word_touched(word, cwd, guarded) for word in words)
     if not touched:
         return False
     simple = not any(mark in command for mark in COMPOUND_MARKS)
@@ -105,7 +175,8 @@ def is_targeted(data: dict[str, Any], cwd: str, guarded: Path) -> bool:
     if not isinstance(tool_input, dict):
         tool_input = {}
     if tool in WRITE_TOOLS:
-        file_path = tool_input.get("file_path")
+        # NotebookEdit は file_path ではなく notebook_path に書き先を入れる
+        file_path = tool_input.get("file_path") or tool_input.get("notebook_path")
         return (
             isinstance(file_path, str)
             and file_path.endswith(".md")
@@ -123,8 +194,10 @@ def main() -> int:
         target = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
         guarded = Path(os.path.realpath(target["guarded_dir"]))
         marker_dir = Path(target["marker_dir"])
+        if not isinstance(data, dict):
+            raise ValueError("入力が dict でない")
         cwd = data["cwd"]
-        if not isinstance(data, dict) or not isinstance(cwd, str) or not cwd:
+        if not isinstance(cwd, str) or not cwd:
             raise ValueError("cwd が無い")
     except (OSError, ValueError, KeyError, TypeError, IndexError):
         return deny(REASON_UNREAD_INPUT)

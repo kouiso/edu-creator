@@ -189,3 +189,118 @@ def test_write_rejects_an_unknown_skill_name(tree, capsys):
     assert cli.main(_argv(tree, GOAL)) == 2
     err = capsys.readouterr().err
     assert err.startswith("エラー: ") and "no-such-skill" in err
+
+
+def _ok_result():
+    return RunResult(account="a", provider="claude", ok=True, structured={"x": 1})
+
+
+def _record_cfg(tmp_path):
+    cfg = tmp_path / "edu-creator.toml"
+    cfg.write_text('[accounts.claude.a]\nconfig_dir = "~/.claude-a"\n', encoding="utf-8")
+    return cfg
+
+
+def _record_argv(tree, tmp_path, *extra):
+    return _argv(
+        tree,
+        GOAL,
+        "--record",
+        "--account",
+        "a",
+        "--config",
+        str(_record_cfg(tmp_path)),
+        "--cassette",
+        str(tmp_path / "rec.json"),
+        *extra,
+    )
+
+
+def test_write_repairs_a_failed_step_check_once(tree, tmp_path, monkeypatch, capsys):
+    from educreator import checks
+
+    calls = []
+
+    def fake_write(req, account, cassette_path=None, record=False, state_dir=None):
+        calls.append(req)
+        return _ok_result()
+
+    # 1 回目だけ step-length を落とす。直しの依頼に検査 ID と出力が乗る
+    results = iter([1] + [0] * 10)
+    monkeypatch.setattr(write, "write_step", fake_write)
+    monkeypatch.setattr(
+        checks,
+        "run_check",
+        lambda c, target, config: checks.CheckResult(c, next(results), "NG の行"),
+    )
+    assert cli.main(_record_argv(tree, tmp_path)) == 0
+    assert len(calls) == 2
+    assert "今回は新しい Step を足さず" in calls[1].prompt
+    assert "step-length" in calls[1].prompt and "NG の行" in calls[1].prompt
+    assert "今から Step を1つだけ書きます" in calls[0].prompt
+
+
+def test_write_stops_after_two_repairs_with_the_check_output(tree, tmp_path, monkeypatch, capsys):
+    from educreator import checks
+
+    calls = []
+    monkeypatch.setattr(
+        write, "write_step", lambda req, account, *a, **kw: calls.append(req) or _ok_result()
+    )
+    monkeypatch.setattr(
+        checks,
+        "run_check",
+        lambda c, target, config: checks.CheckResult(c, 1, "ずっと NG"),
+    )
+    assert cli.main(_record_argv(tree, tmp_path)) == 1
+    # 初回の 1 回 + 直し 2 回で止める
+    assert len(calls) == 3
+    assert "ずっと NG" in capsys.readouterr().err
+
+
+def test_write_runs_five_step_checks_not_all(tree, tmp_path, monkeypatch):
+    from educreator import checks
+
+    seen = []
+    monkeypatch.setattr(write, "write_step", lambda req, account, *a, **kw: _ok_result())
+    monkeypatch.setattr(
+        checks,
+        "run_check",
+        lambda c, target, config: seen.append(c.id) or checks.CheckResult(c, 0, ""),
+    )
+    assert cli.main(_record_argv(tree, tmp_path)) == 0
+    assert sorted(seen) == sorted(
+        ("step-length", "code-completeness", "anchor", "setext-heading", "forward-refs")
+    )
+
+
+def test_write_last_step_runs_all_checks(tree, tmp_path, monkeypatch):
+    from educreator import checks
+
+    seen = []
+    monkeypatch.setattr(write, "write_step", lambda req, account, *a, **kw: _ok_result())
+    monkeypatch.setattr(
+        checks,
+        "run_check",
+        lambda c, target, config: seen.append(c.id) or checks.CheckResult(c, 0, ""),
+    )
+    assert cli.main(_record_argv(tree, tmp_path, "--last-step")) == 0
+    assert len(seen) == len(checks.CHECKS) == 22
+
+
+def test_write_replay_cannot_repair_and_reports_the_failure(tree, monkeypatch, capsys):
+    from educreator import checks
+
+    calls = []
+    monkeypatch.setattr(
+        write, "write_step", lambda req, account, *a, **kw: calls.append(req) or _ok_result()
+    )
+    monkeypatch.setattr(
+        checks,
+        "run_check",
+        lambda c, target, config: checks.CheckResult(c, 1, "NG"),
+    )
+    # 録画の再生（account が無い）は直しを呼ばず、落ちた検査を出して 1 で終わる
+    assert cli.main(_argv(tree, GOAL, "--cassette", str(CASSETTE))) == 1
+    assert len(calls) == 1
+    assert "NG" in capsys.readouterr().err

@@ -334,13 +334,13 @@ Codex の方は、ログインが切れていて今は打てない（`educreator
 | 関門 | どこで回るか |
 |---|---|
 | 書く前の 6 つの手順・文体の仕様・床と天井 | この実行の中。エージェントが skill を読んで守る（Claude は関門の hook が読んだ事を確かめる） |
-| Step ごとの検査 | 今の `write` は検査を回さない（`_cmd_write` は `write_step` を 1 回呼んで終わる）。書いた後に、人が `edu-creator check --spec <course-spec> step-length code-completeness anchor setext-heading forward-refs` の 5 本を別に打つ。`edu-creator check` は教材のフォルダ（naming が chapter-id なら `educreator/cli.py` の 89〜93 行の `checks.day_view` を通した物）に回すので、`forward-refs` が Day のファイルを見つけられる。Day のファイル 1 つだけを渡すと、`forward-refs` はそのパスの下から `day[0-9][0-9]_*.md` を探して見つからず、2 で終わる（`educreator/checks/qa/check_forward_refs.py` の 128〜131 行）。1 Step だけの Day でこの 5 本が通る事は、`tests/educreator/test_e2e_fixture.py` の `test_step_checks_take_material_dir`（133〜147 行）が教材のフォルダ（`tree / "material"`）を渡して確かめている。前の Day も一緒に見るが、前の Day はその Day の終わりに通っているので、落ちたら今の Step が原因 |
-| Day の全部の検査 | その Day の最後の Step を書いた後に、人が 22 本全部を打つ（`edu-creator check --spec <course-spec>`）。`budget` は `**合計時間**` が無い Day を落とす（`docs/checks.md` の 88 行）ので、Day の途中では回さない |
+| Step ごとの検査 | `write` が Step を書いた直後に、自分で `step-length`・`code-completeness`・`anchor`・`setext-heading`・`forward-refs` の 5 本を回す（`educreator/cli.py` の `_STEP_CHECKS` と `_material_checks`）。検査は教材のフォルダ（naming が chapter-id なら `checks.day_view` を通した物）に回すので、`forward-refs` が Day のファイルを見つけられる。Day のファイル 1 つだけを渡すと、`forward-refs` はそのパスの下から `day[0-9][0-9]_*.md` を探して見つからず、2 で終わる（`educreator/checks/qa/check_forward_refs.py` の 128〜131 行）。1 Step だけの Day でこの 5 本が通る事は、`tests/educreator/test_e2e_fixture.py` の `test_step_checks_take_material_dir`（133〜147 行）が教材のフォルダ（`tree / "material"`）を渡して確かめている。前の Day も一緒に見るが、前の Day はその Day の終わりに通っているので、落ちたら今の Step が原因 |
+| Day の全部の検査 | その Day の最後の Step を書く時に `--last-step` を付けると、`write` が 22 本全部を回す。`budget` は `**合計時間**` が無い Day を落とす（`docs/checks.md` の 88 行）ので、Day の途中では回さない。「最後の Step かどうか」は spec に書かれていないので、実行する側が旗で教える |
 | 冷えた読み手（元の Gate 3） | Day を書き終えた後の `edu-creator judge run`。書いた会話と別のエージェントが採点する。読み手像は `learner.description` |
 
-#### 検査に落ちた時の直させ方（依頼文の部品だけ作ってある）
+#### 検査に落ちた時の直させ方
 
-`StepTask.fix` と `FIX_PROMPT` は `educreator/write.py` にある。ただし `_cmd_write` は `fix=` を渡さないので、今の `write` からは使われない。
+`StepTask.fix` と `FIX_PROMPT` は `educreator/write.py` にある。`_cmd_write` は、書いた後の検査に落ちると `fix=` に落ちた検査の ID と出力を入れて `FIX_PROMPT` の依頼を組み、`write_step` で直させる。直しは 1 つの Step につき 2 回まで（`_FIX_ATTEMPTS`）。2 回直しても落ちた検査が残れば、その出力を出して `write` は 1 で終わる。録画の再生（`--cassette` で `--record` 無し）は直す側が居ないので、検査に落ちたら出力を出して 1 で終わる。直しの実行は録画しない（録画の鍵は 1 Step につき 1 つで、入れると初回の分を上書きする）。
 
 `context` は使わない。`context` は「前の Day までに説明した用語」の行として描かれ（`educreator/write.py` の 91 行）、
 `PROMPT` は新しい Step を末尾に足させる（同 38 行と 44 行）ので、そこに入れると検査の結果が用語として届き、直さずに Step を増やしてしまう。
@@ -368,13 +368,7 @@ Codex の方は、ログインが切れていて今は打てない（`educreator
 
 #### まだ作っていない（後で作る）
 
-次の 3 つは今のコードに無い。`_cmd_write`（`educreator/cli.py` の 108〜165 行）は `write_step` を 1 回呼び、`run_check` を呼ばず、`StepTask` に `fix=` も渡さない。
-
-- `write` が Step を書いた直後に、Step ごとの 5 本（`step-length`・`code-completeness`・`anchor`・`setext-heading`・`forward-refs`）を自分で回す
-- Day の最後の Step の後に、22 本を自分で回す
-- 検査に落ちたら `fix=` に落ちた検査の ID と出力を入れて `FIX_PROMPT` で直させる。回数は 1 つの Step につき 2 回まで。2 回直しても同じ検査が落ちたら止め、落ちた検査の出力を出して 1 で終わる
-
-それまでは、検査は上の表のとおり人が `edu-creator check` で別に打つ。
+この節にあった 3 つ（Step ごとの検査・Day の全部の検査・`fix=` による直し）は、上の表のとおり `write` が自分で回すようになった。残りは「冷えた読み手」（`edu-creator judge run`）の後工程だけで、検査と直しの中に組み込まない。
 
 ## 3. 教材ごとの選び方（`course-spec.yaml` の `skills`）
 

@@ -15,6 +15,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -195,6 +196,22 @@ def _intact(folder: Path) -> bool:
     return recorded == tree_hash(plugin, PLUGIN_GLOBS) and folder.name == f"plugin-{recorded[:16]}"
 
 
+def _prune_markers(marker: Path, keep_seconds: float = 24 * 3600) -> None:
+    """古い印を消す。印はセッションごとに増えて誰も片付けない。実行の印が生きているのは
+    その実行の間だけなので、丸 1 日より古い印は消してよい（消し損ねても関門が止める側に倒れる）。"""
+    now = time.time()
+    try:
+        files = list(marker.iterdir())
+    except OSError:
+        return
+    for f in files:
+        try:
+            if f.is_file() and now - f.stat().st_mtime > keep_seconds:
+                f.unlink()
+        except OSError:
+            continue
+
+
 def stage_plugin(names: tuple[str, ...] | list[str], guarded_dir: Path) -> Path:
     """選んだ skill を、その実行の間だけ読み込ませる plugin のフォルダ（edu-creator/）にして返す。
 
@@ -206,6 +223,7 @@ def stage_plugin(names: tuple[str, ...] | list[str], guarded_dir: Path) -> Path:
     base = private_dir()
     marker = base / "marker"
     marker.mkdir(mode=0o700, exist_ok=True)
+    _prune_markers(marker)
     tmp = base / f"plugin-new.{os.getpid()}.{secrets.token_hex(4)}.tmp"
     plugin = tmp / PLUGIN_NAME
     try:

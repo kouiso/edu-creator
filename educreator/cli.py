@@ -157,6 +157,11 @@ def _cmd_write(args: argparse.Namespace) -> int:
     except C.CassetteMismatch as e:
         print(f"エラー: {e}", file=sys.stderr)
         return 1
+    except (RuntimeError, PermissionError) as e:
+        # 古い・無い CLI（RuntimeError）や書けない置き場（PermissionError）も、利用者向けの失敗は
+        # 上の段と同じ「エラー: 1 行・終了コード 2」にそろえる。トレースバックは出さない
+        print(f"エラー: {e}", file=sys.stderr)
+        return 2
     print(json.dumps(res.structured, ensure_ascii=False, indent=2))
     if not res.ok:
         print(

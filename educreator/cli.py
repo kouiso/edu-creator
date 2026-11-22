@@ -105,11 +105,43 @@ def _cmd_check(args: argparse.Namespace) -> int:
     return 1 if failed else 0
 
 
+# Step を書いた直後に回す、Step ごとの 5 本（docs/skill-integration.md の「Step の実行と関門」）
+_STEP_CHECKS = ("step-length", "code-completeness", "anchor", "setext-heading", "forward-refs")
+# 1 つの Step につき、検査に落ちて直させる回数の上限
+_FIX_ATTEMPTS = 2
+
+
+def _material_checks(spec, spec_path, check_ids):
+    """教材のフォルダに選んだ検査を回し、落ちた物だけ返す。`_cmd_check` と同じ渡し方。"""
+    import contextlib
+
+    from educreator import checks
+
+    config = checks.qa_config(
+        spec.stack_profile, spec.qa, spec_path.parent / spec.app_repo, spec.budget.model_dump()
+    )
+    material = spec_path.parent / spec.material_dir
+    view = (
+        checks.day_view(material, [(c.day, c.file) for c in spec.chapters])
+        if spec.naming == "chapter-id"
+        else contextlib.nullcontext(material)
+    )
+    failed = []
+    with view as target:
+        for c in (checks.get(i) for i in check_ids):
+            r = checks.run_check(c, target, config)
+            if not r.ok:
+                failed.append(r)
+    return failed
+
+
 def _cmd_write(args: argparse.Namespace) -> int:
+    from dataclasses import replace
+
     from pydantic import ValidationError
 
     from educreator import cassette as C
-    from educreator import skill
+    from educreator import checks, skill
     from educreator import write as W
     from educreator.accounts import AccountError, load_accounts
     from educreator.profiles import load_profile
@@ -167,7 +199,51 @@ def _cmd_write(args: argparse.Namespace) -> int:
         print(
             f"エラー: 実行が失敗した（終了コード {res.returncode}）\n{res.stderr}", file=sys.stderr
         )
-    return 0 if res.ok else 1
+        return 1
+
+    # 書いた後の検査と直し。Day の最後（--last-step）は 22 本全部、途中の Step は 5 本だけ
+    # （budget など Day の途中では落ちる検査があるので、最後だけ全部回す）
+    check_ids = list(_STEP_CHECKS) if not args.last_step else [c.id for c in checks.CHECKS]
+    failed = _material_checks(spec, spec_path, check_ids)
+    for _attempt in range(_FIX_ATTEMPTS):
+        if not failed:
+            break
+        if account is None:
+            # 録画の再生は実行する側が居ないので直せない。落ちた検査を出して終わる
+            break
+        fix_text = "\n".join(f"- `{r.check.id}`: {r.output}" for r in failed)
+        fix_task = replace(task, fix=fix_text)
+        fix_req = W.request_for(
+            fix_task,
+            tree,
+            profile,
+            spec.budget.code_block_lines,
+            args.max_files,
+            skills=tuple(spec.skills),
+            course_facts=skill.course_facts(spec) if spec.skills else "",
+        )
+        try:
+            # 直しの実行は録画しない。録画の鍵は 1 Step につき 1 つなので、入れると初回の分を上書きする
+            res = W.write_step(fix_req, account, None, args.record, state_dir)
+        except (RuntimeError, PermissionError) as e:
+            print(f"エラー: {e}", file=sys.stderr)
+            return 2
+        if not res.ok:
+            print(
+                f"エラー: 直しの実行が失敗した（終了コード {res.returncode}）\n{res.stderr}",
+                file=sys.stderr,
+            )
+            return 1
+        print(json.dumps(res.structured, ensure_ascii=False, indent=2))
+        failed = _material_checks(spec, spec_path, check_ids)
+    if failed:
+        print(
+            "エラー: 検査に落ちたまま（直しの上限）\n"
+            + "\n".join(f"### {r.check.id}\n{r.output}" for r in failed),
+            file=sys.stderr,
+        )
+        return 1
+    return 0
 
 
 def _cmd_replay(args: argparse.Namespace) -> int:
@@ -352,6 +428,11 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--config", help="edu-creator.toml のパス")
     w.add_argument("--cassette", help="録画の JSON。--record が無ければ再生する（LLM を呼ばない）")
     w.add_argument("--record", action="store_true", help="実行して --cassette に録画する")
+    w.add_argument(
+        "--last-step",
+        action="store_true",
+        help="この Step が Day の最後（書いた後の検査を Step ごとの 5 本ではなく 22 本全部にする）",
+    )
     w.set_defaults(func=_cmd_write)
 
     rp = sub.add_parser(

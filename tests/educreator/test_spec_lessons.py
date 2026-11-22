@@ -128,7 +128,12 @@ _FORBIDDEN = re.compile(
 
 def test_no_hardcoded_stack_names_outside_profiles():
     hits = []
-    for p in (ROOT / "educreator").rglob("*.py"):
+    # skill の本文（.md）も、どの教材にも同じ文であるべきなので同じ決まりで見る
+    files = [
+        *(ROOT / "educreator").rglob("*.py"),
+        *(ROOT / "educreator" / "agent-skill").rglob("*.md"),
+    ]
+    for p in files:
         if "profiles" in p.relative_to(ROOT / "educreator").parts:
             continue
         for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
@@ -228,3 +233,82 @@ def test_check_runs_on_chapter_id_material(tmp_path, capsys):
     assert main(["check", "--spec", str(p), "setext-heading", "budget", "-v"]) == 0
     out = capsys.readouterr().out
     assert "| 01 |" in out and "| 02 |" in out
+
+
+def test_spec_skills_default_is_empty_and_names_are_kept_in_order():
+    assert CourseSpec.model_validate(BASE).skills == []
+    spec = CourseSpec.model_validate({**BASE, "skills": ["material-writing", "course-mission"]})
+    assert spec.skills == ["material-writing", "course-mission"]
+
+
+def test_spec_skills_unknown_name_and_duplicates_are_rejected():
+    with pytest.raises(ValidationError, match="skill 'nope' は無い。使えるもの: course-mission"):
+        CourseSpec.model_validate({**BASE, "skills": ["nope"]})
+    with pytest.raises(
+        ValidationError, match=r"skills に同じ名前が 2 回ある: \['material-writing'\]"
+    ):
+        CourseSpec.model_validate({**BASE, "skills": ["material-writing", "material-writing"]})
+
+
+def test_spec_skills_cli_exit_codes(tmp_path, capsys):
+    bad = {**BASE, "skills": ["nope"]}
+    p = _spec_dir(tmp_path, bad)
+    assert main(["spec", "check", str(p)]) == 1
+    err = capsys.readouterr().err
+    assert "スキーマに合わない" in err and "skill 'nope' は無い" in err
+    assert main(["check", "--spec", str(p), "--list"]) == 0  # 一覧は spec を読まない
+    assert main(["check", "--spec", str(p), "step-ref"]) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("エラー: ") and "skill 'nope' は無い" in err
+    typo = tmp_path / "typo"
+    typo.mkdir()
+    p2 = _spec_dir(typo, {**BASE, "skill": ["material-writing"]})
+    assert main(["spec", "check", str(p2)]) == 1
+    assert "Extra inputs are not permitted" in capsys.readouterr().err
+
+
+def test_agent_skill_folders_have_matching_frontmatter():
+    base = ROOT / "educreator" / "agent-skill"
+    assert sorted(p.name for p in base.iterdir() if (p / "SKILL.md").is_file()) == [
+        "course-mission",
+        "curriculum-quality-gate",
+        "material-writing",
+    ]
+    expected = {
+        "course-mission": (
+            "教材づくりの目的・完了の定義・持ち主の決定・制約・次の一手の選び方の型。"
+            "値は依頼文の「教材」と「学習者」の行から読む。Step を書く前に読む。"
+        ),
+        "material-writing": (
+            "教材の本文（Step）を書く・書き直す前に必ず読む。AI らしい言い回し・翻訳調・手順書化を防ぐ "
+            "6 つの手順と文体の仕様、合格の物差し（reference/voice-spec.md）。"
+        ),
+        "curriculum-quality-gate": (
+            "教材の検査は edu-creator が Step の後に回す。この実行の中では検査の命令を打たず、"
+            "検査の結果が依頼文にあれば、その指摘を直す。"
+        ),
+    }
+    for name, description in expected.items():
+        head = (base / name / "SKILL.md").read_text(encoding="utf-8").split("\n")[:4]
+        assert head == ["---", f"name: {name}", f"description: {description}", "---"]
+
+
+def test_agent_skill_files_carry_nothing_machine_or_tool_specific():
+    base = ROOT / "educreator" / "agent-skill"
+    # 元の教材の置き場・元に残る道具・目印の文字列は、どの教材にも同じ文であるべき skill に入れない
+    banned = (
+        "/Users/",
+        "/home/",
+        "textlint",
+        "check_quality",
+        "writing-lint",
+        "CANARY",
+        ".claude/skills",
+    )
+    hits = []
+    for p in base.rglob("*"):
+        if p.suffix not in (".md", ".py"):
+            continue
+        for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+            hits += [f"{p.relative_to(ROOT)}:{n}: {w}" for w in banned if w in line]
+    assert hits == []

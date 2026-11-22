@@ -7,7 +7,9 @@ Claude Code と Codex は出力の形が違うが、stage・write・gate が口�
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import tempfile
 from collections.abc import Iterable, Iterator
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -33,6 +35,10 @@ class AgentRequest:
     permission_mode: str = "default"
     max_turns: int = 30
     model: str | None = None
+    # 渡す skill の名前（educreator/agent-skill/ の下のフォルダ名）。並びは course-spec に書いた順
+    skills: tuple[str, ...] = ()
+    # hook が守る教材のフォルダ（skills が空でなければ Claude の関門の hook が見る）
+    guarded_dir: Path | None = None
 
 
 @dataclass
@@ -50,6 +56,17 @@ class RunResult:
     def to_json(self) -> str:
         d = asdict(self)
         return json.dumps(d, ensure_ascii=False)
+
+
+def private_dir() -> Path:
+    """スキーマ・plugin・印の置き場。共有の一時フォルダ直下ではなく、自分だけが入れるフォルダにする。"""
+    d = Path(tempfile.gettempdir()) / f"edu-creator-{os.getuid()}"
+    d.mkdir(mode=0o700, exist_ok=True)
+    st = d.lstat()
+    # 別のユーザーが先に作った物や symlink は使わない（同名の物を仕込まれると、依頼と違う形を CLI に渡してしまう）
+    if d.is_symlink() or st.st_uid != os.getuid() or st.st_mode & 0o077:
+        raise PermissionError(f"{d} が自分専用でない（所有者か権限が違う）。置き場を指定してほしい")
+    return d
 
 
 class Runtime(Protocol):

@@ -8,8 +8,9 @@ stream-json の出力を共通の Event に直すだけにする。出力の形�
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 
+from educreator import skill
 from educreator.runtime.base import AgentRequest, Event, json_lines
 
 # StructuredOutput は --json-schema の答えを返すための内部の道具なので、道具の呼び出しとしては数えない
@@ -19,8 +20,26 @@ _INTERNAL_TOOLS = {"StructuredOutput"}
 class ClaudeCodeRuntime:
     provider = "claude"
 
-    def __init__(self, executable: str = "claude") -> None:
+    def __init__(
+        self, executable: str = "claude", version_probe: Callable[[], str] | None = None
+    ) -> None:
         self.executable = executable
+        # 版の文字列を返す関数。None なら、動かすのと同じ self.executable に `--version` を打つ
+        self._version_probe = version_probe
+        self._version_ok = False
+
+    def _require_hook_support(self) -> None:
+        """関門の hook の onFailure（2.1.295 から）が効く版だけ動かす。版が分からない時も動かさない。"""
+        if self._version_ok:
+            return
+        probe = self._version_probe or (lambda: skill.claude_version(self.executable))
+        version = probe()
+        if skill.version_tuple(version) < skill.MIN_CLAUDE_VERSION:
+            raise RuntimeError(
+                "Claude Code 2.1.295 以降が要る（関門の hook の onFailure）。"
+                f"{self.executable} は {version}"
+            )
+        self._version_ok = True
 
     def build_command(self, req: AgentRequest) -> list[str]:
         cmd = [
@@ -34,7 +53,21 @@ class ClaudeCodeRuntime:
             req.permission_mode,
             "--max-turns",
             str(req.max_turns),
+            # 使う人の設定のファイル（user）の hook と plugin を読ませない。
+            # project と local は作業フォルダ（教材のリポジトリ）の持ち物なので残す
+            "--setting-sources",
+            "project,local",
         ]
+        if req.skills:
+            self._require_hook_support()
+            plugin = skill.stage_plugin(req.skills, req.guarded_dir or req.cwd)
+            names = ", ".join(f"{skill.PLUGIN_NAME}:{n}" for n in req.skills)
+            cmd += [
+                "--plugin-dir",
+                str(plugin),
+                "--append-system-prompt",
+                f"教材のファイルに書く前に、Skill ツールで次の skill を順に読む: {names}",
+            ]
         if req.allowed_tools:
             cmd += ["--allowedTools", ",".join(req.allowed_tools)]
         if req.output_schema is not None:

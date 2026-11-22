@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from e2e_task import CASSETTE, FIXTURE, VERIFY
 
-from educreator import cli, write
+from educreator import cli, skill, write
 from educreator.runtime import RunResult
 
 SPEC = """\
@@ -140,3 +140,52 @@ def test_write_gives_skills_and_course_facts_when_the_spec_names_skills(
     req = seen["req"]
     assert req.skills == ("material-writing",) and "Skill" in req.allowed_tools
     assert "- 教材: sample-todo（全 1 日。配布: zip。技術: flask）" in req.prompt
+
+
+def test_write_reports_an_old_claude_as_one_error_line_and_exit_2(
+    tree, tmp_path, monkeypatch, capsys
+):
+    # 偽の claude（古い版）を差し替える。skill を使う spec なので、build_command の
+    # _require_hook_support が RuntimeError を投げ、本物の経路を通る
+    (tree / "course-spec.yaml").write_text(SPEC + "skills: [material-writing]\n", encoding="utf-8")
+    cfg = tmp_path / "edu-creator.toml"
+    cfg.write_text('[accounts.claude.acct-b]\nconfig_dir = "~/.claude-acct-b"\n', encoding="utf-8")
+    monkeypatch.setattr(skill, "claude_version", lambda executable: "2.1.100")
+    argv = _argv(
+        tree,
+        GOAL,
+        "--record",
+        "--account",
+        "acct-b",
+        "--config",
+        str(cfg),
+        "--cassette",
+        str(tmp_path / "rec.json"),
+    )
+    assert cli.main(argv) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("エラー: ") and err.count("\n") == 1
+    assert "2.1.295" in err and "2.1.100" in err and "Traceback" not in err
+
+
+def test_write_reports_a_denied_write_as_one_error_line_and_exit_2(
+    tree, tmp_path, monkeypatch, capsys
+):
+    cfg = tmp_path / "edu-creator.toml"
+    cfg.write_text('[accounts.claude.acct-b]\nconfig_dir = "~/.claude-acct-b"\n', encoding="utf-8")
+
+    def denied(req, account, cassette_path=None, record=False, state_dir=None):
+        raise PermissionError("書き込めない")
+
+    monkeypatch.setattr(write, "write_step", denied)
+    argv = _argv(tree, GOAL, "--record", "--account", "acct-b", "--config", str(cfg))
+    assert cli.main(argv) == 2
+    err = capsys.readouterr().err
+    assert err == "エラー: 書き込めない\n"
+
+
+def test_write_rejects_an_unknown_skill_name(tree, capsys):
+    (tree / "course-spec.yaml").write_text(SPEC + "skills: [no-such-skill]\n", encoding="utf-8")
+    assert cli.main(_argv(tree, GOAL)) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("エラー: ") and "no-such-skill" in err

@@ -451,6 +451,8 @@ skill の文がエージェントに打たせる命令は無い（検査は上�
 
 > [PBI] 書き方の決まりの置き場を、この道具の 1 か所にまとめる
 
+（起票済み。課題 #18。切り替えの手順と、このリポジトリの中の置き場の整理は下の 7 に書いた）
+
 ## 6. 取り込んだ検査が元と同じ結果になる確かめ方
 
 決定表で移すと決めた 8 行に検査は無い（skill・hook・プロンプトだけ）。だから確かめる検査は、取り込み済みの 22 本
@@ -655,3 +657,51 @@ uv run edu-creator write --spec <course-spec.yaml> --day <Day の番号> --goal 
 plugin の形（manifest は省略できる、`--plugin-dir` では名前がフォルダ名になる、skill は `<plugin>:<skill>` で呼ぶ）は
 Claude Code の公式文書（https://code.claude.com/docs/en/plugins-reference と https://code.claude.com/docs/en/skills 、2026-11-13 に読んだ）と、
 Claude Code 2.1.322 の `claude --help` で確かめた。
+
+## 7. 理想案への切り替え（課題 #18）
+
+課題 #18「書き方の決まりの置き場を、この道具の 1 か所にまとめる」に向けた物。
+5 の理想案（edu-creator が唯一の置き場、取り込み元は写しを持たずに読む）への切り替え手順と、
+このリポジトリの中で「書き方の決まりの置き場」に見える物を整理した記録。
+
+### 7.1 正本の置き場
+
+書き方の決まりの正本は `educreator/agent-skill/` の 1 か所だけ。直すのはそこだけにする。
+読む側は `educreator/skill.py` の `SKILL_DIR`（`educreator/agent-skill/`）が見る。
+
+### 7.2 このリポジトリの中の「置き場に見える物」の整理
+
+| 場所 | 中身 | 扱い |
+|---|---|---|
+| `educreator/agent-skill/` | 取り込み・一般化した書き方の決まり（skill 3 つ・reference・hook） | 正本。残す |
+| `skills/`・`templates/`・`utils/template_loader.py`・`test_integration.py` | 旧版（CrewAI）の skill 5 つと、それを読む道具・試すだけのファイル | 生きている道からは読まれていない（`load_skill`・`render_template` を呼ぶ物が無い。`test_integration.py` は pytest の集める `tests/` の外で回っていない）。課題 #18 の変更で `legacy/` に移した（`docs/legacy-audit.md` の方針どおりの退避） |
+| `prompt/` | 旧版のプロンプト。決まりの文を含むが、正本とは別物 | 旧版が使うので残す（`main.py`＝`edu-creator-legacy`・`main_pm.py`・`core/agent_factory.py` が import）。`legacy/` へは A11 で旧版ごと移す |
+| `prompt/instructions/` | このリポジトリを直す AI への決まり | 教材を書く決まりではない。変えない |
+| `script/` | 旧版の検査のスクリプト | `main.py` が使う側のプロジェクトの `script/check_quality.sh` を探す。書き方の決まりではない |
+
+`legacy/utils/template_loader.py` は `Path(__file__).parent.parent` で `legacy/skills/`・`legacy/templates/prompts/` を
+読むので、移しただけで相対の置き場は変わらない。`legacy/test_integration.py` は、`utils.template_loader` が無くなったので、
+リポジトリの根と `legacy/utils/` を `sys.path` に足し、`from template_loader import` に直した。
+
+### 7.3 取り込み元の切り替え手順（決めた物）
+
+課題 #18 の「次にやること」の 2 に当たる。実施は各取り込み元のリポジトリで、時機は持ち主が決める（課題の「誰の判断待ち」）。
+以下 `<edu>` は、取り込み元のリポジトリに置いた edu-creator の submodule の相対パス。
+
+1. edu-creator を submodule として入れる
+2. skill の読み方を `<edu>/educreator/agent-skill/<名前>/` を指す形に変える。読ませ方はどちらか:
+   - symlink: `.claude/skills/material-writing` を `<edu>/educreator/agent-skill/material-writing/` への symlink にする
+     （Claude Code が symlink をたどるかを先に確かめる）
+   - 案内だけの SKILL.md: `.claude/skills/material-writing/SKILL.md` を「正本は `<edu>/educreator/agent-skill/material-writing/`
+     にある。作業の前にそれを読む」だけの文にする（中身の写しは置かない）
+3. hook の呼び方を正本の `hook/*.py` に変える。`target.json` にそのリポジトリの `guarded_dir`（教材のフォルダ）と
+   `marker_dir` を書いて渡す（形は `educreator/skill.py` の `stage_plugin` が作る物と同じ）
+4. 写しを消す。`.claude/skills/` の写し・参照ファイルの写し・写しを同期する道具の対象から外す。
+   取り込み元に残るのは、決定表で `stay-in-source` にした物だけ
+5. 移行中の動作確認。写しを消す前に正本との diff が 0 である事を確かめる → 「読まずに書く」を関門が止める事を試す →
+   教材の検査が従来どおり通る
+
+### 7.4 残っている物
+
+- 持ち主の判断: 取り込み元側をいつ切り替えるか（動いている教材の作業を止めないため）
+- 各取り込み元での実施（7.3 の 1〜5）

@@ -31,6 +31,12 @@ edu-creator - kouiso プロジェクト
 - 同じ内容を issue・PR・コメントの題や本文にも書かない（公開リポなので誰でも読める）。
 - 自動で見張るのは、秘密の値・秘密の名前・データベースの接続情報・個人のメールアドレスだけ。弱点や攻め方の手順、顧客の名前と金額は自動では検査しない。書く人が自分で確かめ、投稿しない。
 
+## 書き方の決まりの置き場
+
+教材を書く時の決まり（skill）の正本は `educreator/agent-skill/` の 1 か所。直すのはそこだけ。
+`legacy/` は旧版（CrewAI）の部品の退避、`prompt/` は旧版が使うプロンプト（A11 で `legacy/` へ移す予定。`docs/legacy-audit.md`）。
+取り込み元の教材リポジトリが写しを持たずにここを読む切り替えの手順は `docs/skill-integration.md` の 7。
+
 ## GitHub Project での作業管理
 
 - この repo のボードの設定は `.github/scrum-board.yml` にある

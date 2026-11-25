@@ -288,9 +288,9 @@ graph TD
 - Scribe 実行時に適切なスキル v1.0/v1.1/v2.0 を動的に選択
 
 **ファイル修正**:
-- `skills/tutorial-writing/SKILL_v1.0.md`, `SKILL_v1.1.md` - バージョン管理
+- `legacy/skills/tutorial-writing/SKILL_v1.0.md`, `SKILL_v1.1.md` - バージョン管理
 - `AGENTS.md` - バージョン指定フォーマット追加
-- `utils/template_loader.py` - バージョン指定対応
+- `legacy/utils/template_loader.py` - バージョン指定対応
 
 **期待効果**:
 - スキル改善と実験がしやすくなる

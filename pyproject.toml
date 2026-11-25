@@ -43,7 +43,7 @@ build-backend = "hatchling.build"
 dev-mode-dirs = ["."]
 # wheel に入れるものを名前で列挙する。only-include はグロブを解釈せず、
 # グロブで書くと何にも一致せず wheel にコードが1本も入らんかった（edu-creator も edu-creator-legacy も ModuleNotFoundError）
-packages = ["educreator", "agents", "config", "core", "prompt", "schemas", "skills", "templates", "tools", "utils"]
+packages = ["educreator", "agents", "config", "core", "prompt", "schemas", "tools", "utils"]
 # edu-creator-legacy（main:main）が import する直下のモジュール
 # packages は直下の .py を拾わんので force-include で名前を渡す
 [tool.hatch.build.targets.wheel.force-include]

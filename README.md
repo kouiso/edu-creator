@@ -244,6 +244,10 @@ The verbose logging feature captures the complete thinking process of all agents
 
 ## 🛠️ Development
 
+### 書き方の決まり（Writing Rules）
+
+教材を書く時の決まり（skill）の正本は `educreator/agent-skill/` の 1 か所（設計と読み込まれ方は `docs/skill-integration.md`）。
+
 ### Lint & Format (Ruff)
 
 ```bash

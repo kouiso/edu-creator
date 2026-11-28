@@ -12,11 +12,13 @@
 import sys
 from pathlib import Path
 
-# プロジェクトルートをPythonパスに追加
-project_root = Path(__file__).parent
+# リポジトリの根をPythonパスに追加（utils・schemas はリポジトリの根から読む）
+project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+# template_loader は legacy/utils/ に移したので、そのフォルダを import の起点に足す
+sys.path.insert(0, str(Path(__file__).parent / "utils"))
 
-from utils.template_loader import load_skill, get_scribe_system_prompt, get_pm_review_prompt
+from template_loader import load_skill, get_scribe_system_prompt, get_pm_review_prompt
 from utils.structured_llm import call_structured_llm
 from schemas.tutorial_output import ChapterOutline, TutorialChapter, ReviewResult
 import json

@@ -28,16 +28,37 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 参照情報・秘密の混入チェック（禁止語リストは secret から渡し、公開しない）
+      # 参照情報・秘密の混入チェック（禁止語リストは secret から渡し、公開しない）。
+      # Dependabot が起こした workflow には repo secrets が届かず Dependabot secrets になるため、
+      # secret が無い場合は「actor が dependabot[bot] で dependabot/* ブランチ、かつ差分が
+      # uv.lock / pyproject.toml だけ」の PR に限り禁止語スキャンだけを外して先へ進める。
+      # 機械生成の依存更新には参照情報の混入経路が無く、gitleaks と後段の lint・pytest はそのまま回る
+      # （ここで落とすと Dependabot PR が必ず序盤で止まり、pytest が届かず auto-merge も発火しない）。
+      # それ以外で secret が無い PR（fork 等）は従来どおり落とす。
       - name: Forbidden-reference guard
         env:
           FORBIDDEN_PATTERNS: ${{ secrets.FORBIDDEN_PATTERNS }}
+          ACTOR: ${{ github.actor }}
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          if [ -z "$FORBIDDEN_PATTERNS" ]; then
+          if [ -n "$FORBIDDEN_PATTERNS" ]; then
+            f="$RUNNER_TEMP/fp"; printf '%s\n' "$FORBIDDEN_PATTERNS" > "$f"
+            EDU_GUARD_PATTERNS_FILE="$f" bash scripts/guard/check-forbidden.sh tree
+            exit 0
+          fi
+          if [ "$ACTOR" != "dependabot[bot]" ] || [ "${HEAD_REF#dependabot/}" = "$HEAD_REF" ]; then
             echo "FORBIDDEN_PATTERNS secret is not available (fork PR?)"; exit 1
           fi
-          f="$RUNNER_TEMP/fp"; printf '%s\n' "$FORBIDDEN_PATTERNS" > "$f"
-          EDU_GUARD_PATTERNS_FILE="$f" bash scripts/guard/check-forbidden.sh tree
+          if [ -z "$BASE_SHA" ] || [ -z "$HEAD_SHA" ]; then
+            echo "PR の差分を特定できないため禁止語スキャンを外せません"; exit 1
+          fi
+          others="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -vxF -e uv.lock -e pyproject.toml || true)"
+          if [ -n "$others" ]; then
+            printf '依存ファイル以外の差分があるため禁止語スキャンを外せません:\n%s\n' "$others"; exit 1
+          fi
+          echo "::notice::Dependabot の依存更新（uv.lock / pyproject.toml のみ）のため禁止語スキャンをスキップ。gitleaks 以降の検査は実施します"
 
       - name: Gitleaks
         run: |
